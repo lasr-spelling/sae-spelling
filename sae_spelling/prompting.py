@@ -30,7 +30,7 @@ def spelling(word: str, separator: str = "-", prefix: str = " ") -> str:
 def create_icl_prompt(
     word: str,
     examples: list[str],
-    template: str = "{word}:",
+    base_template: str = "{word}:",
     char_separator: str = "-",
     spelling_prefix: str = " ",
     example_separator: str = "\n",
@@ -41,10 +41,10 @@ def create_icl_prompt(
     icl_prompts = []
     for ex in examples:
         ex_spelling = spelling(ex, separator=char_separator, prefix=spelling_prefix)
-        ex_base = template.format(word=ex)
+        ex_base = base_template.format(word=ex)
         icl_prompts.append(ex_base + ex_spelling)
     word_spelling = spelling(word, char_separator)
-    word_base = template.format(word=word)
+    word_base = base_template.format(word=word)
     return SpellingPrompt(
         base=example_separator.join(icl_prompts) + example_separator + word_base,
         answer=word_spelling,
