@@ -1,0 +1,39 @@
+[tool.poetry]
+name = "sae-spelling"
+version = "0.1.0"
+description = "Exploration of spelling in models using SAEs"
+authors = []
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+sae-lens = "^3.11.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.5.1"
+pytest = "^8.2.2"
+pyright = "^1.1.370"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+exclude = ["dist", "docs"]
+
+[tool.ruff.lint]
+ignore = ["E203", "E501", "E731"]
+extend-select = ["UP", "TID", "I", "F", "E", "ARG"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.Union".msg = "Use `|` instead"
+"typing.Optional".msg = "Use `| None` instead"
+"typing.Dict".msg = "Use `dict` instead"
+"typing.List".msg = "Use `list` instead"
+
+[tool.pyright]
+typeCheckingMode = "standard"

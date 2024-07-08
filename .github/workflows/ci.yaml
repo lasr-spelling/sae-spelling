@@ -1,0 +1,28 @@
+name: "ci"
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+      - name: Install dependencies
+        run: poetry install
+      - name: check formatting
+        run: poetry run ruff format --check
+      - name: check linting
+        run: poetry run ruff check
+      - name: check types
+        run: poetry run pyright
+      - name: run tests
+        run: poetry run pytest
+      - name: build
+        run: poetry build
