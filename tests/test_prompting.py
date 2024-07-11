@@ -12,6 +12,19 @@ def test_spelling_uses_dash_as_default_separator():
     assert spelling("cat") == " c-a-t"
 
 
+def test_spelling_ignores_non_alphanum_chars_and_leading_space_by_default():
+    assert spelling("_cat") == " c-a-t"
+    assert spelling(" cat") == " c-a-t"
+    assert spelling("▁cat") == " c-a-t"
+    assert spelling("1cat") == " c-a-t"
+
+
+def test_spelling_can_respect_non_alphanum_chars():
+    assert spelling(" cat", ignore_non_alpha_chars=False) == " c-a-t"
+    assert spelling("▁cat", ignore_non_alpha_chars=False) == " ▁-c-a-t"
+    assert spelling("1cat", ignore_non_alpha_chars=False) == " 1-c-a-t"
+
+
 def test_spelling_can_use_a_custom_separator():
     assert spelling("cat", separator=" :: ") == " c :: a :: t"
 
@@ -26,6 +39,20 @@ def test_first_letter_selects_the_first_letter():
 
 def test_first_letter_can_capitalize_letter():
     assert first_letter("cat", capitalize=True) == " C"
+
+
+def test_first_letter_ignores_non_alphanum_chars_and_leading_space_by_default():
+    assert first_letter("_cat") == " c"
+    assert first_letter(" cat") == " c"
+    assert first_letter(" CAT") == " C"
+    assert first_letter("▁cat") == " c"
+    assert first_letter("1cat") == " c"
+
+
+def test_first_letter_can_respect_non_alphanum_chars():
+    assert first_letter(" cat", ignore_non_alpha_chars=False) == " c"
+    assert first_letter("▁cat", ignore_non_alpha_chars=False) == " ▁"
+    assert first_letter("1cat", ignore_non_alpha_chars=False) == " 1"
 
 
 def test_create_icl_prompt_with_defaults():
