@@ -23,24 +23,44 @@ class SpellingPrompt:
 
 
 def spelling(
-    word: str, separator: str = "-", prefix: str = " ", capitalize: bool = False
+    word: str,
+    separator: str = "-",
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
 ) -> str:
     """
     Break a word string into its component characters, separated by `char_separator`
     e.g. spelling("cat") -> " c-a-t"
     """
+    if ignore_leading_space:
+        word = word.strip()
     chars = list(word)
+    if ignore_non_alpha_chars:
+        chars = [c for c in chars if c.isalpha()]
     if capitalize:
         chars = [c.upper() for c in chars]
     return prefix + separator.join(chars)
 
 
-def first_letter(word: str, prefix: str = " ", capitalize: bool = False) -> str:
+def first_letter(
+    word: str,
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
+) -> str:
     """
     return just the first letter of the word, optionally capitalized
     e.g. first_letter("cat") -> " c"
     """
-    first_char = word[0]
+    if ignore_leading_space:
+        word = word.strip()
+    chars = list(word)
+    if ignore_non_alpha_chars:
+        chars = [c for c in chars if c.isalpha()]
+    first_char = chars[0]
     if capitalize:
         first_char = first_char.upper()
     return prefix + first_char
@@ -50,13 +70,35 @@ Formatter = Callable[[str], str]
 
 
 def spelling_formatter(
-    separator: str = "-", prefix: str = " ", capitalize: bool = False
+    separator: str = "-",
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
 ) -> Formatter:
-    return partial(spelling, separator=separator, prefix=prefix, capitalize=capitalize)
+    return partial(
+        spelling,
+        separator=separator,
+        prefix=prefix,
+        capitalize=capitalize,
+        ignore_leading_space=ignore_leading_space,
+        ignore_non_alpha_chars=ignore_non_alpha_chars,
+    )
 
 
-def first_letter_formatter(prefix: str = " ", capitalize: bool = False) -> Formatter:
-    return partial(first_letter, prefix=prefix, capitalize=capitalize)
+def first_letter_formatter(
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
+) -> Formatter:
+    return partial(
+        first_letter,
+        prefix=prefix,
+        capitalize=capitalize,
+        ignore_leading_space=ignore_leading_space,
+        ignore_non_alpha_chars=ignore_non_alpha_chars,
+    )
 
 
 def create_icl_prompt(
@@ -82,10 +124,14 @@ def create_icl_prompt(
     """
     icl_prompts = []
     icl_examples = examples.copy()
-    if shuffle_examples:
-        random.shuffle(icl_examples)
+
     if max_icl_examples is not None:
-        icl_examples = icl_examples[:max_icl_examples]
+        if shuffle_examples:
+            icl_examples = random.sample(icl_examples, max_icl_examples)
+        else:
+            icl_examples = icl_examples[:max_icl_examples]
+    elif shuffle_examples:
+        random.shuffle(icl_examples)
     for ex in icl_examples:
         ex_answer = answer_formatter(ex)
         ex_base = base_template.format(word=ex)
