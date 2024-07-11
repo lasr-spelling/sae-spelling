@@ -1,4 +1,3 @@
-import random
 from dataclasses import dataclass
 from typing import cast
 
@@ -6,7 +5,12 @@ import torch
 from tqdm import tqdm
 from transformer_lens import HookedTransformer
 
-from sae_spelling.prompting import SpellingPrompt, create_icl_prompt
+from sae_spelling.prompting import (
+    Formatter,
+    SpellingPrompt,
+    create_icl_prompt,
+    spelling_formatter,
+)
 from sae_spelling.util import batchify
 
 
@@ -24,10 +28,9 @@ class SpellingGrade:
 class SpellingGrader:
     model: HookedTransformer
     icl_word_list: list[str]
-    n_icl_examples: int = 4
+    max_icl_examples: int | None = None
     base_template: str = "{word}:"
-    char_separator: str = "-"
-    spelling_prefix: str = " "
+    answer_formatter: Formatter = spelling_formatter()
     example_separator: str = "\n"
 
     def grade_word(self, word: str) -> SpellingGrade:
@@ -37,11 +40,11 @@ class SpellingGrader:
         prompts = [
             create_icl_prompt(
                 word,
-                random.sample(self.icl_word_list, self.n_icl_examples),
+                examples=self.icl_word_list,
                 base_template=self.base_template,
-                char_separator=self.char_separator,
-                spelling_prefix=self.spelling_prefix,
+                answer_formatter=spelling_formatter(),
                 example_separator=self.example_separator,
+                max_icl_examples=self.max_icl_examples,
             )
             for word in words
         ]

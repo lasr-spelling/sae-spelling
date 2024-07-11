@@ -26,7 +26,7 @@ def test_spelling_grader_marks_response_wrong_if_model_predicts_incorrectly(
     gpt2_model: HookedTransformer,
 ):
     # GPT2 is terrible at spelling and will get the following wrong
-    grader = SpellingGrader(gpt2_model, icl_word_list=["bananas"], n_icl_examples=1)
+    grader = SpellingGrader(gpt2_model, icl_word_list=["bananas"], max_icl_examples=1)
     grade = grader.grade_word("incorrect")
     assert grade.is_correct is False
     assert grade.answer == " i-n-c-o-r-r-e-c-t"
@@ -37,7 +37,7 @@ def test_spelling_grader_marks_response_wrong_if_model_predicts_incorrectly(
 def test_spelling_grader_batch_processing_gives_the_same_results_as_individual_processing(
     gpt2_model: HookedTransformer,
 ):
-    grader = SpellingGrader(gpt2_model, icl_word_list=["bananas"], n_icl_examples=1)
+    grader = SpellingGrader(gpt2_model, icl_word_list=["bananas"], max_icl_examples=1)
     words = ["hotdog", "bananas", "spaceship"]
     batch_grades = grader.grade_words(words, batch_size=len(words))
     individual_grades = [grader.grade_word(word) for word in words]
