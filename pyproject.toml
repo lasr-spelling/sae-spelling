@@ -8,13 +8,15 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-sae-lens = "^3.11.0"
+sae-lens = "^3.12.1"
+transformer-lens = "^2.2.2"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.5.1"
 pytest = "^8.2.2"
 pyright = "^1.1.370"
 pre-commit = "^3.7.1"
+ipykernel = "^6.29.5"
 
 [build-system]
 requires = ["poetry-core"]
