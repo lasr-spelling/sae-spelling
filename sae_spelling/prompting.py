@@ -143,3 +143,20 @@ def create_icl_prompt(
         answer=word_answer,
         word=word,
     )
+
+
+def random_icl_prompt(
+    vocab: list[str],
+    base_template: str = "{word}:",
+    example_separator: str = "\n",
+    answer_formatter: Formatter = spelling_formatter(),
+    max_icl_examples: int = 10,
+) -> SpellingPrompt:
+    return create_icl_prompt(
+        word=random.choice(vocab),
+        examples=vocab,
+        base_template=base_template,
+        example_separator=example_separator,
+        answer_formatter=answer_formatter,
+        max_icl_examples=max_icl_examples,
+    )
