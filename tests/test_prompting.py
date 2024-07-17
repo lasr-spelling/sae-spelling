@@ -1,11 +1,14 @@
 from textwrap import dedent
 
+from transformers import GPT2TokenizerFast
+
 from sae_spelling.prompting import (
     create_icl_prompt,
     first_letter,
     first_letter_formatter,
     spelling,
 )
+from sae_spelling.vocab import get_alpha_tokens
 
 
 def test_spelling_uses_dash_as_default_separator():
@@ -101,3 +104,14 @@ def test_create_icl_prompt_can_specify_max_icl_examples():
     assert prompt.base == dedent(expected_base).strip()
     assert prompt.word == "cat"
     assert prompt.answer == " c-a-t"
+
+
+def test_create_icl_prompt_peformance_is_fast(gpt2_tokenizer: GPT2TokenizerFast):
+    "Just run create_icl_prompt lots of times to make sure it's reasonably fast"
+    vocab = get_alpha_tokens(gpt2_tokenizer)
+    for _ in range(10):
+        prompts = [
+            create_icl_prompt(word, examples=vocab, max_icl_examples=10)
+            for word in vocab
+        ]
+        assert len(prompts) == len(vocab)
