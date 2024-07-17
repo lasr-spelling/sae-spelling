@@ -123,7 +123,7 @@ def create_icl_prompt(
         shuffle_examples: whether to shuffle the examples before selecting the first `max_icl_examples`. default is True
     """
     icl_prompts = []
-    icl_examples = examples.copy()
+    icl_examples = examples
 
     if max_icl_examples is not None:
         if shuffle_examples:
@@ -131,6 +131,7 @@ def create_icl_prompt(
         else:
             icl_examples = icl_examples[:max_icl_examples]
     elif shuffle_examples:
+        icl_examples = examples.copy()
         random.shuffle(icl_examples)
     for ex in icl_examples:
         ex_answer = answer_formatter(ex)
