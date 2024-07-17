@@ -1,6 +1,7 @@
 from transformers import GPT2TokenizerFast
 
 from sae_spelling.vocab import (
+    LETTERS,
     LETTERS_UPPER,
     get_alpha_tokens,
     get_nltk_words,
@@ -9,7 +10,7 @@ from sae_spelling.vocab import (
 
 
 def is_alpha(word: str) -> bool:
-    return all(char.upper() in LETTERS_UPPER for char in word)
+    return all(char in LETTERS or char in LETTERS_UPPER for char in word)
 
 
 def test_get_tokens_returns_all_tokens_by_default(

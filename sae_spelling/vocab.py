@@ -6,6 +6,7 @@ from transformers import PreTrainedTokenizerFast
 
 LETTERS = "abcdefghijklmnopqrstuvwxyz"
 LETTERS_UPPER = LETTERS.upper()
+ALL_ALPHA_LETTERS = LETTERS + LETTERS_UPPER
 
 
 def get_tokens(
@@ -31,7 +32,7 @@ def get_alpha_tokens(
             token = token[1:]
         if len(token) == 0:
             return False
-        return all(char.upper() in LETTERS_UPPER for char in token)
+        return all(char in ALL_ALPHA_LETTERS for char in token)
 
     return get_tokens(
         tokenizer, filter_alpha, replace_special_chars=replace_special_chars
