@@ -9,6 +9,11 @@ def gpt2_model():
 
 
 @pytest.fixture
+def gpt2_tokenizer(gpt2_model: HookedTransformer):
+    return gpt2_model.tokenizer
+
+
+@pytest.fixture
 def gpt2_l4_sae() -> SAE:
     return SAE.from_pretrained(
         "gpt2-small-res-jb", "blocks.4.hook_resid_pre", device="cpu"
