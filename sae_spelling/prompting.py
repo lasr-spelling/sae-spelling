@@ -96,9 +96,9 @@ def is_present(
 ) -> str:
     """
     Returns whether a character is present in the word or not
-    e.g. is_present("cat", "t") -> "1"
+    e.g. is_present("cat", "t") -> " 1"
     OR
-    is_present("cat", "t") -> "True"
+    is_present("cat", "t") -> " True"
     """
     result = char_to_check in word
 

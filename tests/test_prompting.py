@@ -7,13 +7,9 @@ from sae_spelling.prompting import (
     first_letter,
     first_letter_formatter,
     is_present,
-    is_present_formatter,
     last_letter,
-    last_letter_formatter,
     letter_from_end,
-    letter_from_end_formatter,
     letter_from_start,
-    letter_from_start_formatter,
     spelling,
 )
 from sae_spelling.vocab import get_alpha_tokens
