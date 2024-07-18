@@ -94,15 +94,16 @@ def is_present(
     prefix: str = " ",
     return_binary: bool = False,
 ) -> str:
-    '''
+    """
     Returns whether a character is present in the word or not
-    e.g. is_present("cat", "t) -> "1" 
+    e.g. is_present("cat", "t") -> "1"
     OR
-    is_present("cat", "t) -> "True" 
-    '''
-    result = char_to_check in word 
+    is_present("cat", "t") -> "True"
+    """
+    result = char_to_check in word
 
     return prefix + str(int(result)) if return_binary else prefix + str(result)
+
 
 def letter_from_start(
     word: str,
@@ -140,7 +141,7 @@ def letter_from_end(
 ) -> str:
     """
     return the letter of the word at the 'index' position relative to the END, optionally capitalized
-    NOTE: This follows the Python notation of negative indexing 
+    NOTE: This follows the Python notation of negative indexing
     i.e mobile[-1] will give 'e' and not 'l'
     e.g. letter_from_end("mobile", 2) -> " i"
     """
@@ -160,6 +161,7 @@ def letter_from_end(
 
 # ----- Formatters -------------------------------
 Formatter = Callable[[str], str]
+
 
 def spelling_formatter(
     separator: str = "-",
@@ -207,6 +209,7 @@ def last_letter_formatter(
         ignore_non_alpha_chars=ignore_non_alpha_chars,
     )
 
+
 def is_present_formatter(
     char_to_check: str,
     return_binary: bool = False,
@@ -214,9 +217,9 @@ def is_present_formatter(
 ) -> Formatter:
     return partial(
         is_present,
-        prefix = prefix,
-        char_to_check = char_to_check,
-        return_binary = return_binary
+        prefix=prefix,
+        char_to_check=char_to_check,
+        return_binary=return_binary,
     )
 
 
@@ -229,7 +232,7 @@ def letter_from_start_formatter(
 ) -> Formatter:
     return partial(
         letter_from_start,
-        index= index,
+        index=index,
         prefix=prefix,
         capitalize=capitalize,
         ignore_leading_space=ignore_leading_space,
@@ -246,14 +249,16 @@ def letter_from_end_formatter(
 ) -> Formatter:
     return partial(
         letter_from_end,
-        index= index,
+        index=index,
         prefix=prefix,
         capitalize=capitalize,
         ignore_leading_space=ignore_leading_space,
         ignore_non_alpha_chars=ignore_non_alpha_chars,
     )
 
+
 # --------------------------------
+
 
 def create_icl_prompt(
     word: str,
