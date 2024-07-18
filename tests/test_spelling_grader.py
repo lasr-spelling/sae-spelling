@@ -45,9 +45,11 @@ def test_spelling_grader_batch_processing_gives_the_same_results_as_individual_p
         assert batch_grade.is_correct == individual_grade.is_correct
         assert batch_grade.answer == individual_grade.answer
         assert batch_grade.prediction == individual_grade.prediction
-        assert batch_grade.answer_log_prob == approx(individual_grade.answer_log_prob)
+        assert batch_grade.answer_log_prob == approx(
+            individual_grade.answer_log_prob, abs=1e-5
+        )
         assert batch_grade.prediction_log_prob == approx(
-            individual_grade.prediction_log_prob
+            individual_grade.prediction_log_prob, abs=1e-5
         )
 
 

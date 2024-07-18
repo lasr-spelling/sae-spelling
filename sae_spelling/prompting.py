@@ -66,6 +66,100 @@ def first_letter(
     return prefix + first_char
 
 
+def last_letter(
+    word: str,
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
+) -> str:
+    """
+    return just the last letter of the word, optionally capitalized
+    e.g. last_letter("cat") -> " t"
+    """
+    if ignore_leading_space:
+        word = word.strip()
+    chars = list(word)
+    if ignore_non_alpha_chars:
+        chars = [c for c in chars if c.isalpha()]
+    last_char = chars[-1]
+    if capitalize:
+        last_char = last_char.upper()
+    return prefix + last_char
+
+
+def is_present(
+    word: str,
+    char_to_check: str,
+    prefix: str = " ",
+    return_binary: bool = False,
+) -> str:
+    """
+    Returns whether a character is present in the word or not
+    e.g. is_present("cat", "t") -> " 1"
+    OR
+    is_present("cat", "t") -> " True"
+    """
+    result = char_to_check in word
+
+    return prefix + str(int(result)) if return_binary else prefix + str(result)
+
+
+def letter_from_start(
+    word: str,
+    index: int,
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
+) -> str:
+    """
+    return the letter of the word at the 'index' position relative to the START, optionally capitalized
+    e.g. letter_from_start("mobile", 2) -> " b"
+    """
+    if ignore_leading_space:
+        word = word.strip()
+
+    chars = list(word)
+    if ignore_non_alpha_chars:
+        chars = [c for c in chars if c.isalpha()]
+
+    char_at_idx = chars[index]
+
+    if capitalize:
+        char_at_idx = char_at_idx.upper()
+    return prefix + char_at_idx
+
+
+def letter_from_end(
+    word: str,
+    index: int,
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
+) -> str:
+    """
+    return the letter of the word at the 'index' position relative to the END, optionally capitalized
+    NOTE: This follows the Python notation of negative indexing
+    i.e mobile[-1] will give 'e' and not 'l'
+    e.g. letter_from_end("mobile", 2) -> " i"
+    """
+    if ignore_leading_space:
+        word = word.strip()
+
+    chars = list(word)
+    if ignore_non_alpha_chars:
+        chars = [c for c in chars if c.isalpha()]
+
+    char_at_idx = chars[-index]
+
+    if capitalize:
+        char_at_idx = char_at_idx.upper()
+    return prefix + char_at_idx
+
+
+# ----- Formatters -------------------------------
 Formatter = Callable[[str], str]
 
 
@@ -99,6 +193,71 @@ def first_letter_formatter(
         ignore_leading_space=ignore_leading_space,
         ignore_non_alpha_chars=ignore_non_alpha_chars,
     )
+
+
+def last_letter_formatter(
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
+) -> Formatter:
+    return partial(
+        last_letter,
+        prefix=prefix,
+        capitalize=capitalize,
+        ignore_leading_space=ignore_leading_space,
+        ignore_non_alpha_chars=ignore_non_alpha_chars,
+    )
+
+
+def is_present_formatter(
+    char_to_check: str,
+    return_binary: bool = False,
+    prefix: str = " ",
+) -> Formatter:
+    return partial(
+        is_present,
+        prefix=prefix,
+        char_to_check=char_to_check,
+        return_binary=return_binary,
+    )
+
+
+def letter_from_start_formatter(
+    index,
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
+) -> Formatter:
+    return partial(
+        letter_from_start,
+        index=index,
+        prefix=prefix,
+        capitalize=capitalize,
+        ignore_leading_space=ignore_leading_space,
+        ignore_non_alpha_chars=ignore_non_alpha_chars,
+    )
+
+
+def letter_from_end_formatter(
+    index,
+    prefix: str = " ",
+    capitalize: bool = False,
+    ignore_leading_space: bool = True,
+    ignore_non_alpha_chars: bool = True,
+) -> Formatter:
+    return partial(
+        letter_from_end,
+        index=index,
+        prefix=prefix,
+        capitalize=capitalize,
+        ignore_leading_space=ignore_leading_space,
+        ignore_non_alpha_chars=ignore_non_alpha_chars,
+    )
+
+
+# --------------------------------
 
 
 def create_icl_prompt(

@@ -6,6 +6,10 @@ from sae_spelling.prompting import (
     create_icl_prompt,
     first_letter,
     first_letter_formatter,
+    is_present,
+    last_letter,
+    letter_from_end,
+    letter_from_start,
     spelling,
 )
 from sae_spelling.vocab import get_alpha_tokens
@@ -56,6 +60,66 @@ def test_first_letter_can_respect_non_alphanum_chars():
     assert first_letter(" cat", ignore_non_alpha_chars=False) == " c"
     assert first_letter("▁cat", ignore_non_alpha_chars=False) == " ▁"
     assert first_letter("1cat", ignore_non_alpha_chars=False) == " 1"
+
+
+# ---
+def test_last_letter_can_capitalize_letter():
+    assert last_letter("cat", capitalize=True) == " T"
+
+
+def test_last_letter_ignores_non_alphanum_chars_and_leading_space_by_default():
+    assert last_letter("_cat") == " t"
+    assert last_letter(" cat") == " t"
+    assert last_letter(" CAT") == " T"
+    assert last_letter("▁cat") == " t"
+    assert last_letter("1cat") == " t"
+
+
+def test_last_letter_can_respect_non_alphanum_chars():
+    assert last_letter(" cat", ignore_non_alpha_chars=False) == " t"
+    assert last_letter("▁cat", ignore_non_alpha_chars=False) == " t"
+    assert last_letter("cat1", ignore_non_alpha_chars=False) == " 1"
+
+
+def test_is_present_can_give_num_binary():
+    assert is_present("cat", "a", return_binary=True) == " 1"
+    assert is_present("cat", "a", return_binary=False) == " True"
+
+
+def test_letter_from_start_can_capitalize_letter():
+    assert letter_from_start("cat", index=1, capitalize=True) == " A"
+
+
+def test_letter_from_start_ignores_non_alphanum_chars_and_leading_space_by_default():
+    assert letter_from_start("_cat", index=1) == " a"
+    assert letter_from_start(" cat", index=1) == " a"
+    assert letter_from_start(" CAT", index=1) == " A"
+    assert letter_from_start("▁cat", index=1) == " a"
+    assert letter_from_start("1cat", index=1) == " a"
+
+
+def test_letter_from_start_can_respect_non_alphanum_chars():
+    assert letter_from_start(" cat", index=1, ignore_non_alpha_chars=False) == " a"
+    assert letter_from_start("▁cat", index=1, ignore_non_alpha_chars=False) == " c"
+    assert letter_from_start("cat1", index=3, ignore_non_alpha_chars=False) == " 1"
+
+
+def test_letter_from_end_can_capitalize_letter():
+    assert letter_from_end("cat", index=1, capitalize=True) == " T"
+
+
+def test_letter_from_end_ignores_non_alphanum_chars_and_leading_space_by_default():
+    assert letter_from_end("_cat", index=1) == " t"
+    assert letter_from_end(" cat", index=1) == " t"
+    assert letter_from_end(" CAT", index=1) == " T"
+    assert letter_from_end("▁cat", index=1) == " t"
+    assert letter_from_end("1cat", index=1) == " t"
+
+
+def test_letter_from_end_can_respect_non_alphanum_chars():
+    assert letter_from_end(" cat", index=1, ignore_non_alpha_chars=False) == " t"
+    assert letter_from_end("▁cat_", index=1, ignore_non_alpha_chars=False) == " _"
+    assert letter_from_end("cat1", index=1, ignore_non_alpha_chars=False) == " 1"
 
 
 def test_create_icl_prompt_with_defaults():
