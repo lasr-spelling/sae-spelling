@@ -17,3 +17,8 @@ def batchify(
         disable=not show_progress,
     ):
         yield data[i : i + batch_size]
+
+
+def flip_dict(d: dict[T, T]) -> dict[T, T]:
+    """Flip a dictionary, i.e. {a: b} -> {b: a}"""
+    return {v: k for k, v in d.items()}
