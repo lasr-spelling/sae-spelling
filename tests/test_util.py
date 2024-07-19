@@ -14,8 +14,10 @@ def set_sae_dtype(sae: SAE, dtype: torch.dtype):
     sae.dtype = dtype
     return sae
 
+
 def test_flip_dict():
     assert flip_dict({"a": "b"}) == {"b": "a"}
+
 
 def test_flip_dict_with_multiple_values():
     assert flip_dict({"a": "b", "c": "d"}) == {"b": "a", "d": "c"}

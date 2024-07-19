@@ -63,20 +63,25 @@ def test_get_nltk_words():
     words = get_nltk_words()
     assert len(words) == 236736
 
+
 def test_get_brown_words():
     words = get_brown_words()
     assert len(words) == 1161192
 
-def test_get_common_words(): 
+
+def test_get_common_words():
     nltk_words = set(word for word in get_nltk_words())
     words = get_common_words()
     assert all(word in nltk_words for word in words.keys())
 
     threshold = 50
     more_restricted_words = get_common_words(threshold=threshold)
-    assert all(more_restricted_words[word] >= threshold for word in more_restricted_words)
+    assert all(
+        more_restricted_words[word] >= threshold for word in more_restricted_words
+    )
     assert all(word in nltk_words for word in more_restricted_words.keys())
     assert len(more_restricted_words.keys()) < len(words.keys())
+
 
 def test_get_similar_word_pairs():
     length = 5
@@ -87,11 +92,15 @@ def test_get_similar_word_pairs():
     assert all(word2.islower() for word2 in pairs.values())
     assert all(word1[1:] == word2[1:] for word1, word2 in pairs.items())
 
+
 def test_get_common_word_tokens(gpt2_tokenizer: GPT2TokenizerFast):
     threshold = 10
     common_words = set(get_common_words(threshold=threshold).keys())
-    tokens = get_common_word_tokens(gpt2_tokenizer, threshold=threshold, only_start_of_word=True, replace_special_chars=True)
+    tokens = get_common_word_tokens(
+        gpt2_tokenizer,
+        threshold=threshold,
+        only_start_of_word=True,
+        replace_special_chars=True,
+    )
     assert all(token.startswith(" ") for token in tokens)
     assert all(token[1:] in common_words for token in tokens)
-      
-    
