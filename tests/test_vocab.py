@@ -4,12 +4,12 @@ from sae_spelling.vocab import (
     LETTERS,
     LETTERS_UPPER,
     get_alpha_tokens,
-    get_nltk_words,
-    get_tokens,
     get_brown_words,
-    get_common_words,
-    get_similar_word_pairs,
     get_common_word_tokens,
+    get_common_words,
+    get_nltk_words,
+    get_similar_word_pairs,
+    get_tokens,
 )
 
 

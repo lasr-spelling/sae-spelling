@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Callable
 
 import nltk
-from nltk.corpus import words, brown
+from nltk.corpus import brown, words
 from transformers import PreTrainedTokenizerFast
 
 LETTERS = "abcdefghijklmnopqrstuvwxyz"
