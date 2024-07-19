@@ -83,6 +83,8 @@ def test_get_similar_word_pairs():
     pairs = get_similar_word_pairs(length=length)
 
     assert all(len(word1) == length for word1 in pairs.keys())
+    assert all(word1.islower() for word1 in pairs.keys())
+    assert all(word2.islower() for word2 in pairs.values())
     assert all(word1[1:] == word2[1:] for word1, word2 in pairs.items())
 
 def test_get_common_word_tokens(gpt2_tokenizer: GPT2TokenizerFast):
