@@ -144,10 +144,10 @@ def _run_probe_training(
         patience=3,
         eps=EPS,
     )
+    pbar = tqdm(total=len(loader), disable=not show_progress)
     for epoch in range(num_epochs):
-        pbar = tqdm(loader, disable=not show_progress)
         epoch_sum_loss = 0
-        for batch_embeddings, batch_labels in pbar:
+        for batch_embeddings, batch_labels in loader:
             optimizer.zero_grad()
             logits = probe(batch_embeddings)
             loss = loss_fn(logits, batch_labels)
@@ -157,6 +157,8 @@ def _run_probe_training(
             pbar.set_description(
                 f"Epoch {epoch + 1}/{num_epochs}, Loss: {loss.item():.8f}"
             )
+            pbar.update()
+        pbar.reset()
         epoch_mean_loss = epoch_sum_loss / len(loader)
         last_lr = scheduler.get_last_lr()
         if last_lr[0] <= 2 * EPS and early_stopping:
@@ -168,4 +170,5 @@ def _run_probe_training(
                 f"epoch {epoch} sum loss: {epoch_sum_loss:.8f}, mean loss: {epoch_mean_loss:.8f} lr: {last_lr}"
             )
         scheduler.step(epoch_mean_loss)
+    pbar.close()
     probe.eval()
