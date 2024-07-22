@@ -1,9 +1,13 @@
 from collections.abc import Generator, Sequence
 from typing import TypeVar
 
+import torch
 from tqdm import tqdm
 
 T = TypeVar("T")
+
+
+DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def batchify(
