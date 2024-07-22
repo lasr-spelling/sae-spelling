@@ -5,9 +5,23 @@ from torch.nn.functional import cosine_similarity, one_hot
 
 from sae_spelling.probing import (
     _calc_pos_weights,
+    _get_exponential_decay_scheduler,
     train_binary_probe,
     train_multi_probe,
 )
+
+
+def test_get_exponential_decay_scheduler_decays_from_lr_to_end_lr_over_num_epochs():
+    optim = torch.optim.Adam([torch.zeros(1)], lr=0.01)
+    scheduler = _get_exponential_decay_scheduler(
+        optim, start_lr=0.01, end_lr=1e-5, num_steps=100
+    )
+    lrs = []
+    for _ in range(100):
+        lrs.append(scheduler.get_last_lr()[0])
+        scheduler.step()
+    assert lrs[0] == pytest.approx(0.01, abs=1e-6)
+    assert lrs[-1] == pytest.approx(1e-5, abs=1e-6)
 
 
 def test_calc_pos_weights_returns_1_for_equal_weights():
