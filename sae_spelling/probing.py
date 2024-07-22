@@ -1,3 +1,4 @@
+from math import exp, log
 from typing import Callable
 
 import torch
@@ -6,8 +7,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 from sae_spelling.util import DEFAULT_DEVICE
-
-EPS = 1e-8
 
 
 class LinearProbe(nn.Module):
@@ -40,10 +39,10 @@ def train_multi_probe(
     batch_size: int = 256,
     num_epochs: int = 100,
     lr: float = 0.01,
-    weight_decay: float = 1e-7,
+    end_lr: float = 1e-5,
+    weight_decay: float = 1e-6,
     show_progress: bool = True,
     verbose: bool = False,
-    early_stopping: bool = True,
     device: torch.device = DEFAULT_DEVICE,
 ) -> LinearProbe:
     """
@@ -75,10 +74,10 @@ def train_multi_probe(
         loss_fn=nn.BCEWithLogitsLoss(pos_weight=_calc_pos_weights(y_train)),
         num_epochs=num_epochs,
         lr=lr,
+        end_lr=end_lr,
         weight_decay=weight_decay,
         show_progress=show_progress,
         verbose=verbose,
-        early_stopping=early_stopping,
     )
 
     return probe
@@ -90,10 +89,10 @@ def train_binary_probe(
     batch_size: int = 256,
     num_epochs: int = 100,
     lr: float = 0.01,
-    weight_decay: float = 1e-7,
+    end_lr: float = 1e-5,
+    weight_decay: float = 1e-6,
     show_progress: bool = True,
     verbose: bool = False,
-    early_stopping: bool = True,
     device: torch.device = DEFAULT_DEVICE,
 ) -> LinearProbe:
     """
@@ -116,12 +115,19 @@ def train_binary_probe(
         batch_size=batch_size,
         num_epochs=num_epochs,
         lr=lr,
+        end_lr=end_lr,
         weight_decay=weight_decay,
         show_progress=show_progress,
         verbose=verbose,
         device=device,
-        early_stopping=early_stopping,
     )
+
+
+def _get_exponential_decay_scheduler(
+    optimizer: optim.Optimizer, start_lr: float, end_lr: float, num_steps: int
+) -> optim.lr_scheduler.ExponentialLR:
+    gamma = exp(log(end_lr / start_lr) / num_steps)
+    return optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
 
 
 def _run_probe_training(
@@ -130,19 +136,15 @@ def _run_probe_training(
     loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
     num_epochs: int,
     lr: float,
+    end_lr: float,
     weight_decay: float,
     show_progress: bool,
     verbose: bool,
-    early_stopping: bool,
 ) -> None:
     probe.train()
     optimizer = optim.Adam(probe.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode="min",
-        factor=0.1,
-        patience=3,
-        eps=EPS,
+    scheduler = _get_exponential_decay_scheduler(
+        optimizer, start_lr=lr, end_lr=end_lr, num_steps=num_epochs
     )
     pbar = tqdm(total=len(loader), disable=not show_progress)
     for epoch in range(num_epochs):
@@ -153,22 +155,19 @@ def _run_probe_training(
             loss = loss_fn(logits, batch_labels)
             loss.backward()
             optimizer.step()
-            epoch_sum_loss += loss.item()
+            batch_loss = loss.item()
+            epoch_sum_loss += batch_loss
             pbar.set_description(
-                f"Epoch {epoch + 1}/{num_epochs}, Loss: {loss.item():.8f}"
+                f"Epoch {epoch + 1}/{num_epochs}, Loss: {batch_loss:.8f}"
             )
             pbar.update()
         pbar.reset()
-        epoch_mean_loss = epoch_sum_loss / len(loader)
-        last_lr = scheduler.get_last_lr()
-        if last_lr[0] <= 2 * EPS and early_stopping:
-            if verbose:
-                print("Early stopping")
-            break
         if verbose:
+            epoch_mean_loss = epoch_sum_loss / len(loader)
+            last_lr = scheduler.get_last_lr()
             print(
                 f"epoch {epoch} sum loss: {epoch_sum_loss:.8f}, mean loss: {epoch_mean_loss:.8f} lr: {last_lr}"
             )
-        scheduler.step(epoch_mean_loss)
+        scheduler.step()
     pbar.close()
     probe.eval()
