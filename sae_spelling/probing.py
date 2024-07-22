@@ -4,7 +4,7 @@ from typing import Callable
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm # Autochecks if the instane is a notebook or not (fixes weird bugs in colab)
 
 from sae_spelling.util import DEFAULT_DEVICE
 
