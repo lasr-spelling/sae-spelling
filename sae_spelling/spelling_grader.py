@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import cast
 
 import torch
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 from transformer_lens import HookedTransformer
 
 from sae_spelling.prompting import (

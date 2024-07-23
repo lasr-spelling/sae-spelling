@@ -2,7 +2,7 @@ from collections.abc import Generator, Sequence
 from typing import TypeVar
 
 import torch
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 
 T = TypeVar("T")
 
