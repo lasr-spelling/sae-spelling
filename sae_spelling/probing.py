@@ -138,7 +138,7 @@ def _run_probe_training(
     lr: float,
     end_lr: float,
     weight_decay: float,
-    show_progress: bool,
+    show_progress: bool ,
     verbose: bool,
 ) -> None:
     probe.train()
@@ -146,28 +146,37 @@ def _run_probe_training(
     scheduler = _get_exponential_decay_scheduler(
         optimizer, start_lr=lr, end_lr=end_lr, num_steps=num_epochs
     )
-    pbar = tqdm(total=len(loader), disable=not show_progress)
-    for epoch in range(num_epochs):
+    
+    # history = {'epoch_loss': [], 'learning_rate': []}
+
+    
+    epoch_pbar = tqdm(range(num_epochs), disable=not show_progress, desc="Epochs")
+    for epoch in epoch_pbar:
         epoch_sum_loss = 0
-        for batch_embeddings, batch_labels in loader:
+        batch_pbar = tqdm(loader, disable=not show_progress, leave=False, desc=f"Epoch {epoch + 1}/{num_epochs}")
+        
+        for batch_embeddings, batch_labels in batch_pbar:
             optimizer.zero_grad()
             logits = probe(batch_embeddings)
             loss = loss_fn(logits, batch_labels)
             loss.backward()
             optimizer.step()
+            
             batch_loss = loss.item()
             epoch_sum_loss += batch_loss
-            pbar.set_description(
-                f"Epoch {epoch + 1}/{num_epochs}, Loss: {batch_loss:.8f}"
-            )
-            pbar.update()
-        pbar.reset()
+            batch_pbar.set_postfix({'Loss': f"{batch_loss:.8f}"})
+        
+        epoch_mean_loss = epoch_sum_loss / len(loader)
+        current_lr = scheduler.get_last_lr()[0]
+        
+        epoch_pbar.set_postfix({
+            'Mean Loss': f"{epoch_mean_loss:.8f}",
+            'LR': f"{current_lr:.2e}"
+        })
+        
         if verbose:
-            epoch_mean_loss = epoch_sum_loss / len(loader)
-            last_lr = scheduler.get_last_lr()
-            print(
-                f"epoch {epoch} sum loss: {epoch_sum_loss:.8f}, mean loss: {epoch_mean_loss:.8f} lr: {last_lr}"
-            )
+            print(f"Epoch {epoch + 1}: Mean Loss: {epoch_mean_loss:.8f}, LR: {current_lr:.2e}")
+        
         scheduler.step()
-    pbar.close()
+    
     probe.eval()
