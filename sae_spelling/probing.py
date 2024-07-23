@@ -4,11 +4,12 @@ from typing import Callable
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
+
+# Autocheck if the instance is a notebook or not (fixes weird bugs in colab)
 from tqdm.autonotebook import (
     tqdm,
 )
 
-# Autochecks if the instane is a notebook or not (fixes weird bugs in colab)
 from sae_spelling.util import DEFAULT_DEVICE
 
 
@@ -149,8 +150,6 @@ def _run_probe_training(
     scheduler = _get_exponential_decay_scheduler(
         optimizer, start_lr=lr, end_lr=end_lr, num_steps=num_epochs
     )
-
-    # history = {'epoch_loss': [], 'learning_rate': []}
 
     epoch_pbar = tqdm(range(num_epochs), disable=not show_progress, desc="Epochs")
     for epoch in epoch_pbar:
