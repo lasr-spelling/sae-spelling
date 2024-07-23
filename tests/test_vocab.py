@@ -89,7 +89,7 @@ def test_get_same_ending_word_pairs_of_len():
 
     assert all(len(word1) == length for word1, word2 in pairs)
     assert all(word1.islower() and word2.islower() for word1, word2 in pairs)
-    assert all(word1[-length:] == word2[-length:] for word1, word2 in pairs)
+    assert all(word1[1:] == word2[1:] for word1, word2 in pairs)
 
 
 def test_get_common_word_tokens(gpt2_tokenizer: GPT2TokenizerFast):
