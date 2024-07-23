@@ -116,19 +116,19 @@ def group_words_by_ending_and_length(
     }
 
 
-def get_similar_word_pairs(length: int) -> dict[str, str]:
+def get_same_ending_word_pairs_of_len(length: int) -> list[tuple[str, str]]:
     """
-    Get a dictionary of words that have the same length and ending.
-    E.g. { "union": "onion", "roman": "woman" }
+    Get a list of word tuples that have the same length and ending.
+    E.g. [("union", "onion"), ("roman", "woman")]
     """
     common_words_lowercase = {word.lower() for word in get_common_words().keys()}
 
     word_groups = group_words_by_ending_and_length(list(common_words_lowercase))
 
-    pairs = {}
+    pairs = []
 
     for similar_words in word_groups[length].values():
-        pairs[similar_words[0]] = similar_words[1]
+        pairs.append((similar_words[0], similar_words[1]))
 
     return pairs
 

@@ -8,7 +8,7 @@ from sae_spelling.vocab import (
     get_common_word_tokens,
     get_common_words,
     get_nltk_words,
-    get_similar_word_pairs,
+    get_same_ending_word_pairs_of_len,
     get_tokens,
 )
 
@@ -83,14 +83,13 @@ def test_get_common_words():
     assert len(more_restricted_words.keys()) < len(words.keys())
 
 
-def test_get_similar_word_pairs():
+def test_get_same_ending_word_pairs_of_len():
     length = 5
-    pairs = get_similar_word_pairs(length=length)
+    pairs = get_same_ending_word_pairs_of_len(length)
 
-    assert all(len(word1) == length for word1 in pairs.keys())
-    assert all(word1.islower() for word1 in pairs.keys())
-    assert all(word2.islower() for word2 in pairs.values())
-    assert all(word1[1:] == word2[1:] for word1, word2 in pairs.items())
+    assert all(len(word1) == length for word1, word2 in pairs)
+    assert all(word1.islower() and word2.islower() for word1, word2 in pairs)
+    assert all(word1[-length:] == word2[-length:] for word1, word2 in pairs)
 
 
 def test_get_common_word_tokens(gpt2_tokenizer: GPT2TokenizerFast):
