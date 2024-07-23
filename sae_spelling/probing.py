@@ -4,8 +4,11 @@ from typing import Callable
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
-from tqdm.autonotebook import tqdm # Autochecks if the instane is a notebook or not (fixes weird bugs in colab)
+from tqdm.autonotebook import (
+    tqdm,
+)
 
+# Autochecks if the instane is a notebook or not (fixes weird bugs in colab)
 from sae_spelling.util import DEFAULT_DEVICE
 
 
@@ -138,7 +141,7 @@ def _run_probe_training(
     lr: float,
     end_lr: float,
     weight_decay: float,
-    show_progress: bool ,
+    show_progress: bool,
     verbose: bool,
 ) -> None:
     probe.train()
@@ -146,37 +149,42 @@ def _run_probe_training(
     scheduler = _get_exponential_decay_scheduler(
         optimizer, start_lr=lr, end_lr=end_lr, num_steps=num_epochs
     )
-    
+
     # history = {'epoch_loss': [], 'learning_rate': []}
 
-    
     epoch_pbar = tqdm(range(num_epochs), disable=not show_progress, desc="Epochs")
     for epoch in epoch_pbar:
         epoch_sum_loss = 0
-        batch_pbar = tqdm(loader, disable=not show_progress, leave=False, desc=f"Epoch {epoch + 1}/{num_epochs}")
-        
+        batch_pbar = tqdm(
+            loader,
+            disable=not show_progress,
+            leave=False,
+            desc=f"Epoch {epoch + 1}/{num_epochs}",
+        )
+
         for batch_embeddings, batch_labels in batch_pbar:
             optimizer.zero_grad()
             logits = probe(batch_embeddings)
             loss = loss_fn(logits, batch_labels)
             loss.backward()
             optimizer.step()
-            
+
             batch_loss = loss.item()
             epoch_sum_loss += batch_loss
-            batch_pbar.set_postfix({'Loss': f"{batch_loss:.8f}"})
-        
+            batch_pbar.set_postfix({"Loss": f"{batch_loss:.8f}"})
+
         epoch_mean_loss = epoch_sum_loss / len(loader)
         current_lr = scheduler.get_last_lr()[0]
-        
-        epoch_pbar.set_postfix({
-            'Mean Loss': f"{epoch_mean_loss:.8f}",
-            'LR': f"{current_lr:.2e}"
-        })
-        
+
+        epoch_pbar.set_postfix(
+            {"Mean Loss": f"{epoch_mean_loss:.8f}", "LR": f"{current_lr:.2e}"}
+        )
+
         if verbose:
-            print(f"Epoch {epoch + 1}: Mean Loss: {epoch_mean_loss:.8f}, LR: {current_lr:.2e}")
-        
+            print(
+                f"Epoch {epoch + 1}: Mean Loss: {epoch_mean_loss:.8f}, LR: {current_lr:.2e}"
+            )
+
         scheduler.step()
-    
+
     probe.eval()
