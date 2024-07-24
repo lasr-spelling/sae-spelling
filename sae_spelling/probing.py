@@ -397,8 +397,8 @@ def train_linear_probe_for_task(
     y_train_one_hot = one_hot(y_train_tensor, num_classes=num_classes)
 
     probe = train_multi_probe(
-        x_train=X_train_tensor,
-        y_train=y_train_one_hot,
+        x_train=X_train_tensor.detach().clone(),
+        y_train=y_train_one_hot.detach().clone(),
         num_probes=num_classes,
         batch_size=batch_size,
         num_epochs=num_epochs,
