@@ -1,12 +1,24 @@
+import os
+import tempfile
+from unittest.mock import Mock, patch
+
+import numpy as np
+import pandas as pd
 import pytest
 import torch
 from sklearn.linear_model import LogisticRegression
 from torch.nn.functional import cosine_similarity, one_hot
 
 from sae_spelling.probing import (
+    LinearProbe,
     _calc_pos_weights,
     _get_exponential_decay_scheduler,
+    create_dataset_probe_training,
+    gen_and_save_df_acts_probing,
+    gen_probe_stats,
+    load_df_acts_probing,
     train_binary_probe,
+    train_linear_probe_for_task,
     train_multi_probe,
 )
 
@@ -260,3 +272,123 @@ def test_train_multi_probe_scores_highly_on_noisy_datasets(seed):
 
     assert train_acc > 0.9
     assert test_acc > 0.9
+
+
+def test_create_dataset_probe_training():
+    vocab = ["apple", "banana", "cherry"]
+    formatter = lambda x: x[0].upper()
+    num_prompts_per_token = 2
+    max_icl_examples = 2
+
+    result = create_dataset_probe_training(
+        vocab, formatter, num_prompts_per_token, max_icl_examples
+    )
+
+    assert len(result) == len(vocab) * num_prompts_per_token
+    for item in result:
+        assert "prompt" in item
+        assert "answer" in item
+        assert "answer_class" in item
+        assert item["answer"] in ["A", "B", "C"]
+        assert isinstance(item["answer_class"], int)
+        assert 0 <= item["answer_class"] <= 25
+
+
+@patch("sae_spelling.probing.HookedTransformer")
+@patch("sae_spelling.probing.pd.DataFrame.to_csv")
+def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model):
+    dataset = [
+        {"prompt": "Test prompt 1", "answer": "A", "answer_class": 0},
+        {"prompt": "Test prompt 2", "answer": "B", "answer_class": 1},
+    ]
+    mock_model.cfg.d_model = 768
+    mock_cache = {
+        "test_hook": torch.rand(2, 10, 768)  # 2 samples, 10 tokens, 768 dimensions
+    }
+    mock_model.run_with_cache.return_value = (None, mock_cache)
+
+    # temporary directory for memmap
+    with tempfile.TemporaryDirectory() as tmpdir:
+        df, memmap = gen_and_save_df_acts_probing(
+            mock_model, dataset, tmpdir, "test_hook", "test_task", batch_size=2
+        )
+
+        assert isinstance(df, pd.DataFrame)
+        assert isinstance(memmap, np.memmap)
+        assert mock_to_csv.called
+
+        # Check if the memmap file was created
+        memmap_path = os.path.join(tmpdir, "test_task", "test_task_act_tensor.dat")
+        assert os.path.exists(memmap_path)
+        assert memmap.shape == (2, 768)  # 2 samples, 768 dimensions
+
+    # the temporary directory is autocleaned here
+
+
+@patch("sae_spelling.probing.pd.read_csv")
+def test_load_df_acts_probing(mock_read_csv):
+    mock_model = Mock()
+    mock_model.cfg.d_model = 768
+
+    mock_df = pd.DataFrame({"index": range(100)})
+    mock_read_csv.return_value = mock_df
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        task_dir = os.path.join(tmpdir, "test_task")
+        os.makedirs(task_dir)
+
+        memmap_path = os.path.join(task_dir, "test_task_act_tensor.dat")
+        memmap = np.memmap(memmap_path, dtype="float32", mode="w+", shape=(100, 768))
+        memmap[:] = np.random.rand(100, 768).astype(np.float32)
+        memmap.flush()
+
+        df, acts = load_df_acts_probing(mock_model, tmpdir, "test_task")
+
+        assert isinstance(df, pd.DataFrame)
+        assert isinstance(acts, np.memmap)
+        assert df.shape[0] == acts.shape[0]
+        assert acts.shape == (100, 768)
+
+
+def test_train_linear_probe_for_task():
+    task_df = pd.DataFrame({"answer_class": np.random.randint(0, 26, 1000)})
+    device = torch.device("cpu")
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp_filename = tmp.name
+
+    task_act_tensor = np.memmap(
+        tmp_filename, dtype="float32", mode="w+", shape=(1000, 768)
+    )
+    task_act_tensor[:] = np.random.rand(1000, 768).astype(np.float32)
+    task_act_tensor.flush()
+
+    probe, probe_data = train_linear_probe_for_task(
+        task_df, device, task_act_tensor, num_classes=26, batch_size=32, num_epochs=2
+    )
+
+    assert isinstance(probe, LinearProbe)
+    assert isinstance(probe_data, dict)
+    assert all(key in probe_data for key in ["X_train", "X_val", "y_train", "y_val"])
+
+    # Clean up
+    del task_act_tensor
+    os.unlink(tmp_filename)
+
+
+def test_gen_probe_stats():
+    probe = LinearProbe(input_dim=768, num_outputs=26)
+    X_val = torch.rand(100, 768)
+    y_val = torch.randint(0, 26, (100,))
+
+    results = gen_probe_stats(probe, X_val, y_val)
+
+    assert len(results) == 26
+    for result in results:
+        assert all(
+            key in result for key in ["letter", "f1", "accuracy", "precision", "recall"]
+        )
+        assert isinstance(result["letter"], str)
+        assert all(
+            isinstance(result[key], float)
+            for key in ["f1", "accuracy", "precision", "recall"]
+        )
