@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import cast
 
 import torch
-from tqdm.autonotebook import tqdm
 from transformer_lens import HookedTransformer
 
 from sae_spelling.prompting import (
@@ -36,7 +35,9 @@ class SpellingGrader:
     def grade_word(self, word: str) -> SpellingGrade:
         return self.grade_words([word])[0]
 
-    def grade_words(self, words: list[str], batch_size: int = 1) -> list[SpellingGrade]:
+    def grade_words(
+        self, words: list[str], batch_size: int = 1, show_progress: bool = True
+    ) -> list[SpellingGrade]:
         prompts = [
             create_icl_prompt(
                 word,
@@ -49,7 +50,7 @@ class SpellingGrader:
             for word in words
         ]
         grades = []
-        for batch in tqdm(batchify(prompts, batch_size)):
+        for batch in batchify(prompts, batch_size, show_progress=show_progress):
             inputs = [prompt.base + prompt.answer for prompt in batch]
             res = self.model(inputs)
             for i, prompt in enumerate(batch):
