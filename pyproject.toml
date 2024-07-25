@@ -38,6 +38,8 @@ extend-select = ["UP", "TID", "I", "F", "E", "ARG"]
 "typing.Optional".msg = "Use `| None` instead"
 "typing.Dict".msg = "Use `dict` instead"
 "typing.List".msg = "Use `list` instead"
+"tqdm._tqdm".msg = "Use `from tqdm.autonotebook import tqdm` instead"
+"tqdm.tqdm".msg = "Use `from tqdm.autonotebook import tqdm` instead"
 
 [tool.pyright]
 typeCheckingMode = "standard"
