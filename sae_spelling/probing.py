@@ -1,16 +1,24 @@
+import os
+from dataclasses import dataclass
 from math import exp, log
 from typing import Callable
 
+import numpy as np
+import pandas as pd
 import torch
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.model_selection import train_test_split
 from torch import nn, optim
+from torch.nn.functional import one_hot
 from torch.utils.data import DataLoader, TensorDataset
 
 # Autocheck if the instance is a notebook or not (fixes weird bugs in colab)
-from tqdm.autonotebook import (
-    tqdm,
-)
+from tqdm.autonotebook import tqdm
+from transformer_lens import HookedTransformer
 
-from sae_spelling.util import DEFAULT_DEVICE
+from sae_spelling.prompting import Formatter, SpellingPrompt, create_icl_prompt
+from sae_spelling.util import DEFAULT_DEVICE, batchify
+from sae_spelling.vocab import LETTERS
 
 
 class LinearProbe(nn.Module):
@@ -40,7 +48,7 @@ def train_multi_probe(
     x_train: torch.Tensor,  # tensor of shape (num_samples, input_dim)
     y_train: torch.Tensor,  # tensor of shape (num_samples, num_probes), with values in [0, 1]
     num_probes: int | None = None,  # inferred from y_train if None
-    batch_size: int = 256,
+    batch_size: int = 4096,
     num_epochs: int = 100,
     lr: float = 0.01,
     end_lr: float = 1e-5,
@@ -187,3 +195,286 @@ def _run_probe_training(
         scheduler.step()
 
     probe.eval()
+
+
+def create_dataset_probe_training(
+    vocab: list[str],
+    formatter: Formatter,
+    num_prompts_per_token: int,
+    max_icl_examples: int = 10,
+    answer_class_fn: Callable[[str], int] = lambda answer: LETTERS.index(
+        answer.strip().lower()
+    ),
+) -> list[tuple[SpellingPrompt, int]]:
+    """
+    Create a dataset for probe training by generating prompts for each token in the given vocabulary.
+
+    Args:
+        vocab: List of tokens in the vocabulary.
+        formatter: Formatter function for answers.
+        num_prompts_per_token: Number of prompts to generate for each token.
+        max_icl_examples: Maximum number of in-context learning examples to include.
+        answer_class_fn: Function to determine the answer class from the answer string.
+                         Default is to index into LETTERS for single-character answers.
+
+    Returns:
+        A list of tuples, each containing a SpellingPrompt object and the class of the answer (typically an integer 0-26).
+    """
+    prompts = []
+
+    for token in tqdm(vocab, total=len(vocab), desc="Processing tokens"):
+        for _ in range(num_prompts_per_token):
+            prompt = create_icl_prompt(
+                word=token,
+                examples=vocab,
+                answer_formatter=formatter,
+                max_icl_examples=max_icl_examples,
+            )
+            answer_class = answer_class_fn(prompt.answer)
+
+            prompts.append(
+                # {"prompt": prompt_text, "answer": answer, "answer_class": answer_class}
+                (prompt, answer_class)
+            )
+
+    return prompts
+
+
+def gen_and_save_df_acts_probing(
+    model: HookedTransformer,
+    dataset: list[tuple[SpellingPrompt, int]],
+    path: str,
+    hook_point: str,
+    task_name: str,
+    batch_size: int = 64,
+    position_idx: int = -2,
+) -> tuple[pd.DataFrame, np.memmap] | tuple[None, None]:
+    """
+    Generate and save activations for probing tasks to the specified path
+
+    Args:
+        model: The model to use for generating activations.
+        dataset: List of tuples containing SpellingPrompt objects and answer classes.
+        path: Base path for saving outputs.
+        hook_point: The model hook point to extract activations from.
+        task_name: Name of the task for file naming.
+        batch_size: Batch size for processing.
+        position_idx: Index of the token position to extract activations from. Default is -2.
+
+    Returns:
+        A tuple containing the task DataFrame and memory-mapped activation tensor.
+
+    Note:
+        This function assumes all prompts in the dataset have equal token length.
+        Using a fixed position_idx will only give correct results if this assumption holds.
+    """
+    d_model = model.cfg.d_model
+
+    # Pre-allocate the DataFrame for speed
+    task_df = pd.DataFrame(
+        {
+            "prompt": [prompt.base for prompt, _ in dataset],
+            "HOOK_POINT": [hook_point] * len(dataset),
+            "answer": [prompt.answer for prompt, _ in dataset],
+            "answer_class": [answer_class for _, answer_class in dataset],
+        }
+    )
+    task_df.index.name = "index"
+
+    # Create the directory if it doesn't exist
+    task_dir = os.path.join(path, task_name)
+    os.makedirs(task_dir, exist_ok=True)
+
+    memmap_path = os.path.join(task_dir, f"{task_name}_act_tensor.dat")
+
+    # Create a memmap file for act_tensor
+    act_tensor_memmap = np.memmap(
+        memmap_path, dtype="float32", mode="w+", shape=(len(dataset), d_model)
+    )
+
+    with torch.no_grad():
+        for i, batch in enumerate(batchify(dataset, batch_size, show_progress=True)):
+            batch_prompts = [prompt.base for prompt, _ in batch]
+            _, cache = model.run_with_cache(batch_prompts)
+
+            # Numpy doesn't support bfloat16, have to manually convert to fp32
+            acts = cache[hook_point][:, position_idx, :].to(torch.float32).cpu().numpy()
+
+            start_idx = i * batch_size
+            end_idx = start_idx + len(batch)
+            act_tensor_memmap[start_idx:end_idx] = acts
+
+    # Flush the memmap to ensure all data is written to disk
+    act_tensor_memmap.flush()
+
+    # Save the df to disk
+    df_path = os.path.join(task_dir, f"{task_name}_df.csv")
+    task_df.to_csv(df_path, index=True)
+
+    return task_df, act_tensor_memmap
+    return task_df, act_tensor_memmap
+
+
+def load_df_acts_probing(
+    model: HookedTransformer, path: str, task: str
+) -> tuple[pd.DataFrame, np.memmap]:
+    """
+    Load the DataFrame and activation tensor for a specific probing task.
+
+    Args:
+        model: The model used for generating activations (needed for d_model).
+        path: Base path where the data is stored.
+        task: Name of the task for file naming.
+
+    Returns:
+        A tuple containing the task DataFrame and memory-mapped activation tensor.
+
+    Raises:
+        FileNotFoundError: If the CSV or memory-mapped file is not found.
+        ValueError: If there's a mismatch between DataFrame and activation tensor sizes.
+    """
+    d_model = model.cfg.d_model
+
+    df_path = os.path.join(path, task, f"{task}_df.csv")
+    act_path = os.path.join(path, task, f"{task}_act_tensor.dat")
+
+    try:
+        task_df = pd.read_csv(df_path, index_col="index")
+    except FileNotFoundError:
+        raise FileNotFoundError(f"DataFrame file not found at {df_path}")
+
+    try:
+        task_acts = np.memmap(
+            act_path, shape=(len(task_df), d_model), mode="r", dtype="float32"
+        )
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Activation tensor file not found at {act_path}")
+
+    # Verify that DataFrame and activation tensor sizes match
+    if len(task_df) != task_acts.shape[0]:
+        raise ValueError(
+            f"Mismatch between DataFrame length ({len(task_df)}) and activation tensor first dimension ({task_acts.shape[0]})"
+        )
+
+    return task_df, task_acts
+
+
+def train_linear_probe_for_task(
+    task_df: pd.DataFrame,
+    device: torch.device,
+    task_activations: np.memmap,
+    num_classes: int = 26,
+    batch_size: int = 4096,
+    num_epochs: int = 50,
+    lr: float = 1e-2,
+    test_size: float = 0.2,
+    random_state: int = 42,
+) -> tuple[LinearProbe, dict[str, torch.Tensor]]:
+    """
+    Train a linear probe for a specific task using the provided DataFrame and activation tensor.
+
+    Args:
+        task_df: DataFrame containing task data.
+        task_activations: Numpy memmap of activation tensors.
+        num_classes: Number of classes for the probe (default: 26).
+        batch_size: Batch size for training (default: 4096).
+        num_epochs: Number of training epochs (default: 50).
+        lr: Learning rate (default: 1e-3).
+        test_size: Proportion of the dataset to include in the validation split (default: 0.2).
+        random_state: Random state for reproducibility (default: 42).
+        device: Torch device to use for training (default: auto-detected).
+
+    Returns:
+        A tuple containing the trained LinearProbe and a dictionary of probe data.
+    """
+    y = task_df["answer_class"].values
+
+    X_train, X_val, y_train, y_val = train_test_split(
+        task_activations, y, test_size=test_size, random_state=random_state
+    )
+
+    X_train_tensor = torch.from_numpy(X_train).float().to(device).requires_grad_(True)
+    y_train_tensor = torch.from_numpy(y_train).long().to(device)
+
+    X_val_tensor = torch.from_numpy(X_val).float().to(device)
+    y_val_tensor = torch.from_numpy(y_val).long().to(device)
+
+    y_train_one_hot = one_hot(y_train_tensor, num_classes=num_classes)
+
+    probe = train_multi_probe(
+        x_train=X_train_tensor.detach().clone(),
+        y_train=y_train_one_hot.detach().clone(),
+        num_probes=num_classes,
+        batch_size=batch_size,
+        num_epochs=num_epochs,
+        lr=lr,
+        show_progress=True,
+        verbose=False,
+        device=device,
+    )
+
+    probe_data = {
+        "X_train": X_train_tensor,
+        "X_val": X_val_tensor,
+        "y_train": y_train_tensor,
+        "y_val": y_val_tensor,
+    }
+
+    return probe, probe_data
+
+
+@dataclass
+class ProbeStats:
+    letter: str
+    f1: float
+    accuracy: float
+    precision: float
+    recall: float
+
+
+def gen_probe_stats(
+    probe: LinearProbe,
+    X_val: torch.Tensor,
+    y_val: torch.Tensor,
+    device: torch.device = DEFAULT_DEVICE,
+) -> list[ProbeStats]:
+    """
+    Generate statistics for a trained probe on validation data.
+
+    Args:
+        probe: The trained LinearProbe.
+        X_val: Validation input tensor.
+        y_val: Validation target tensor.
+        device: The device to run computations on (default: CUDA if available, else CPU).
+
+    Returns:
+        A list of ProbeStats objects containing performance metrics for each letter.
+    """
+
+    def validator_fn(x: torch.Tensor) -> torch.Tensor:
+        return probe(x.clone().detach().to(device)).argmax(dim=1).cpu()
+
+    results: list[ProbeStats] = []
+
+    val_preds = validator_fn(X_val)
+    y_val_cpu = y_val.cpu()
+
+    for i, letter in enumerate(LETTERS):
+        letter_preds = val_preds == i
+        letter_val_y = y_val_cpu == i
+
+        results.append(
+            ProbeStats(
+                letter=letter,
+                f1=float(f1_score(letter_val_y, letter_preds, average="binary")),
+                accuracy=float(accuracy_score(letter_val_y, letter_preds)),
+                precision=float(
+                    precision_score(letter_val_y, letter_preds, average="binary")
+                ),
+                recall=float(
+                    recall_score(letter_val_y, letter_preds, average="binary")
+                ),
+            )
+        )
+
+    return results
