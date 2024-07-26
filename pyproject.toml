@@ -37,6 +37,7 @@ extend-select = ["UP", "TID", "I", "F", "E", "ARG"]
 "typing.Union".msg = "Use `|` instead"
 "typing.Optional".msg = "Use `| None` instead"
 "typing.Dict".msg = "Use `dict` instead"
+"typing.Tuple".msg = "Use `tuple` instead"
 "typing.List".msg = "Use `list` instead"
 "tqdm._tqdm".msg = "Use `from tqdm.autonotebook import tqdm` instead"
 "tqdm.tqdm".msg = "Use `from tqdm.autonotebook import tqdm` instead"

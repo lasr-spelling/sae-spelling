@@ -11,6 +11,8 @@ from torch.nn.functional import cosine_similarity, one_hot
 
 from sae_spelling.probing import (
     LinearProbe,
+    ProbeStats,
+    SpellingPrompt,
     _calc_pos_weights,
     _get_exponential_decay_scheduler,
     create_dataset_probe_training,
@@ -285,21 +287,29 @@ def test_create_dataset_probe_training():
     )
 
     assert len(result) == len(vocab) * num_prompts_per_token
-    for item in result:
-        assert "prompt" in item
-        assert "answer" in item
-        assert "answer_class" in item
-        assert item["answer"] in ["A", "B", "C"]
-        assert isinstance(item["answer_class"], int)
-        assert 0 <= item["answer_class"] <= 25
+    for prompt, answer_class in result:
+        assert isinstance(prompt, SpellingPrompt)
+        assert isinstance(answer_class, int)
+        assert prompt.answer in ["A", "B", "C"]
+        assert 0 <= answer_class <= 25
 
 
 @patch("sae_spelling.probing.HookedTransformer")
 @patch("sae_spelling.probing.pd.DataFrame.to_csv")
 def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model):
     dataset = [
-        {"prompt": "Test prompt 1", "answer": "A", "answer_class": 0},
-        {"prompt": "Test prompt 2", "answer": "B", "answer_class": 1},
+        (
+            SpellingPrompt(
+                base="The word 'cat' is spelled:", answer=" c-a-t", word="cat"
+            ),
+            0,
+        ),
+        (
+            SpellingPrompt(
+                base="The word 'dog' is spelled:", answer=" d-o-g", word="dog"
+            ),
+            1,
+        ),
     ]
     mock_model.cfg.d_model = 768
     mock_cache = {
@@ -310,7 +320,13 @@ def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model):
     # temporary directory for memmap
     with tempfile.TemporaryDirectory() as tmpdir:
         df, memmap = gen_and_save_df_acts_probing(
-            mock_model, dataset, tmpdir, "test_hook", "test_task", batch_size=2
+            mock_model,
+            dataset,
+            tmpdir,
+            "test_hook",
+            "test_task",
+            batch_size=2,
+            position_idx=-2,
         )
 
         assert isinstance(df, pd.DataFrame)
@@ -384,11 +400,9 @@ def test_gen_probe_stats():
 
     assert len(results) == 26
     for result in results:
+        assert isinstance(result, ProbeStats)
+        assert isinstance(result.letter, str)
         assert all(
-            key in result for key in ["letter", "f1", "accuracy", "precision", "recall"]
-        )
-        assert isinstance(result["letter"], str)
-        assert all(
-            isinstance(result[key], float)
+            isinstance(getattr(result, key), float)
             for key in ["f1", "accuracy", "precision", "recall"]
         )
