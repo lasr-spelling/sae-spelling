@@ -50,8 +50,10 @@ def test_calculate_individual_feature_ablations_has_non_zero_vals_for_firing_fea
     )
     # just ensure we've outputting something for the original metric
     assert abs(output.original_score) > 0.1
+    assert isinstance(output.original_score, float)
     # 1362 should drop the metric by a lot more than 1024 should do anything
     assert output.ablation_scores[1362] < -0.9
+    assert isinstance(output.ablation_scores[1362], float)
     assert abs(output.ablation_scores[1024]) < 0.2
     assert output.ablation_scores[10] == approx(0.0, abs=1e-5)
 

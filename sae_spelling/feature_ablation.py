@@ -61,7 +61,7 @@ def calculate_individual_feature_ablations(
         return_type="logits" if return_logits else "loss",
         include_error_term=True,
     )
-    original_score = metric_fn(original_output.model_output)
+    original_score = metric_fn(original_output.model_output).item()
     if ablate_features is None:
         sae_acts = original_output.sae_activations[hook_point]
         ablate_features = (
@@ -90,5 +90,5 @@ def calculate_individual_feature_ablations(
     return FeatureAblationsOutput(
         sae_cache=original_output.sae_activations[hook_point],
         ablation_scores=ablation_scores,
-        original_score=original_score.item(),
+        original_score=original_score,
     )
