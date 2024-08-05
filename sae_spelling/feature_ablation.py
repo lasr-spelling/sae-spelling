@@ -27,8 +27,8 @@ def calculate_individual_feature_ablations(
     input: str,
     metric_fn: Callable[[torch.Tensor], torch.Tensor],
     sae: SAE,
-    ablate_features: Sequence[int],
     ablate_token_index: int,  # TODO: this can be extended to multiple tokens
+    ablate_features: Sequence[int] | None = None,
     return_logits: bool = True,
     batch_size: int = 10,
     show_progress: bool = True,
@@ -36,15 +36,17 @@ def calculate_individual_feature_ablations(
 ) -> FeatureAblationsOutput:
     """
     Calculate the effect of ablating each feature individually. This means return the change in metric if the
-    SAE feature never fired at all during the forward pass on the input. This is what feature attribution is approximating.
-    If we're unsure about how accurate attribution is, we can compare it to this function. This function is much slower, however.
+    SAE feature never fired at all during the forward pass on the input.
+    This is what feature attribution is approximating, but the signs are flipped since attribution asks "How important is a feature?",
+    while ablation asks "what is the metric delta if the feature is deleted?".
+    If we're unsure about how accurate attribution is, we can compare it to this function (after flipping the sign). This function is much slower, however.
 
     Args:
         model: The model to run the forward pass on.
         input: The input to the model.
         metric_fn: A function that takes the model output and returns a scalar metric.
         sae: The SAE to use for ablation.
-        ablate_features: The indices of the features to ablate.
+        ablate_features: The indices of the features to ablate. If empty, ablate all firing features.
         ablate_token_index: The index of the token to ablate.
         return_logits: Whether to return the logits or the loss.
         batch_size: The batch size to use for ablation.
@@ -60,6 +62,13 @@ def calculate_individual_feature_ablations(
         include_error_term=True,
     )
     original_score = metric_fn(original_output.model_output)
+    if ablate_features is None:
+        sae_acts = original_output.sae_activations[hook_point]
+        ablate_features = (
+            torch.nonzero(sae_acts.feature_acts[0, ablate_token_index])
+            .squeeze(-1)
+            .tolist()
+        )
     ablation_scores = {}
     for batch in batchify(ablate_features, batch_size, show_progress=show_progress):
         feature_vals = original_output.sae_activations[hook_point].feature_acts[
