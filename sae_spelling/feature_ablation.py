@@ -30,8 +30,8 @@ def calculate_individual_feature_ablations(
     ablate_token_index: int,  # TODO: this can be extended to multiple tokens
     ablate_features: Sequence[int] | None = None,
     return_logits: bool = True,
-    batch_size: int = 10,
-    show_progress: bool = True,
+    batch_size: int = 25,
+    show_progress: bool = False,
     # TODO: support not including the error term
 ) -> FeatureAblationsOutput:
     """
@@ -62,6 +62,7 @@ def calculate_individual_feature_ablations(
         include_error_term=True,
     )
     original_score = metric_fn(original_output.model_output).item()
+    # if we didn't pass specific features to ablate, try ablating every SAE feature that fired
     if ablate_features is None:
         sae_acts = original_output.sae_activations[hook_point]
         ablate_features = (
