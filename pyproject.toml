@@ -10,7 +10,10 @@ readme = "README.md"
 python = "^3.10"
 sae-lens = "^3.12.1"
 transformer-lens = "^2.2.2"
-torch = "2.2.2"
+torch = [
+    # use 2.2.2 on mac to support old intel macs, but allow colab to not downgrade torch
+    { platform = "!=linux", version = "2.2.2" },
+]
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.5.1"
