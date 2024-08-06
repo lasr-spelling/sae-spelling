@@ -34,6 +34,7 @@ def calculate_individual_feature_ablations(
     return_logits: bool = True,
     batch_size: int = 25,
     show_progress: bool = False,
+    firing_threshold: float = EPS,
     # TODO: support not including the error term
 ) -> FeatureAblationsOutput:
     """
@@ -68,7 +69,9 @@ def calculate_individual_feature_ablations(
     if ablate_features is None:
         sae_acts = original_output.sae_activations[hook_point]
         ablate_features = (
-            torch.nonzero(sae_acts.feature_acts[0, ablate_token_index] > EPS)
+            torch.nonzero(
+                sae_acts.feature_acts[0, ablate_token_index] > firing_threshold
+            )
             .squeeze(-1)
             .tolist()
         )

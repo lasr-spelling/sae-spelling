@@ -86,6 +86,30 @@ def test_calculate_individual_feature_ablations_ablates_all_firing_features_by_d
     assert output.ablation_scores.keys() == set(firing_features)
 
 
+def test_calculate_individual_feature_ablations_ignores_features_firing_below_firing_threshold(
+    gpt2_model: HookedTransformer, gpt2_l4_sae: SAE
+):
+    assert gpt2_model.tokenizer is not None
+    mary_token = gpt2_model.tokenizer.encode(" Mary")[0]
+
+    def metric_fn(logits: Tensor) -> Tensor:
+        return logits[:, -1, mary_token]
+
+    # ablate "John" feature: https://www.neuronpedia.org/gpt2-small/4-res-jb/1362
+    # 1024 is another random feature that activates, but less strongly
+    output = calculate_individual_feature_ablations(
+        gpt2_model,
+        "When John and Mary went to the shops, John gave the bag to",
+        metric_fn=metric_fn,
+        sae=gpt2_l4_sae,
+        ablate_token_index=-5,  # second John index
+        batch_size=10,
+        firing_threshold=3.5,
+    )
+    assert 1362 in output.ablation_scores
+    assert 1024 not in output.ablation_scores
+
+
 def test_calculate_individual_feature_ablations_gives_same_results_regardless_of_batch_size(
     gpt2_model: HookedTransformer, gpt2_l4_sae: SAE
 ):
