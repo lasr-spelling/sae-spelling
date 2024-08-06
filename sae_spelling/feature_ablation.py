@@ -54,6 +54,7 @@ def calculate_individual_feature_ablations(
         return_logits: Whether to return the logits or the loss.
         batch_size: The batch size to use for ablation.
         show_progress: Whether to show a progress bar.
+        firing_threshold: The threshold for a feature to be considered "firing" and thus run ablation. Default is 1e-8.
     """
     input_toks = model.to_tokens(input)
     hook_point = sae.cfg.hook_name
