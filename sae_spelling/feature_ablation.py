@@ -13,6 +13,8 @@ from sae_spelling.sae_utils import (
 )
 from sae_spelling.util import batchify
 
+EPS = 1e-8
+
 
 @dataclass
 class FeatureAblationsOutput:
@@ -66,7 +68,7 @@ def calculate_individual_feature_ablations(
     if ablate_features is None:
         sae_acts = original_output.sae_activations[hook_point]
         ablate_features = (
-            torch.nonzero(sae_acts.feature_acts[0, ablate_token_index])
+            torch.nonzero(sae_acts.feature_acts[0, ablate_token_index] > EPS)
             .squeeze(-1)
             .tolist()
         )
