@@ -61,7 +61,7 @@ def calculate_individual_feature_ablations(
         return_type="logits" if return_logits else "loss",
         include_error_term=True,
     )
-    original_score = metric_fn(original_output.model_output).item()
+    original_score = metric_fn(original_output.model_output)
     # if we didn't pass specific features to ablate, try ablating every SAE feature that fired
     if ablate_features is None:
         sae_acts = original_output.sae_activations[hook_point]
@@ -85,11 +85,11 @@ def calculate_individual_feature_ablations(
             input_toks.repeat(len(batch), 1),
             fwd_hooks=[(hook_point, ablation_hook)],
         )
-        for feat_idx, output in zip(batch, outputs):
-            score = metric_fn(output.unsqueeze(0)).item()
-            ablation_scores[feat_idx] = score - original_score
+        deltas = (metric_fn(outputs) - original_score).cpu().tolist()
+        for feat_idx, delta in zip(batch, deltas):
+            ablation_scores[feat_idx] = delta
     return FeatureAblationsOutput(
         sae_cache=original_output.sae_activations[hook_point],
         ablation_scores=ablation_scores,
-        original_score=original_score,
+        original_score=original_score.item(),
     )
