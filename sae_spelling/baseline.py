@@ -8,7 +8,17 @@ from transformers import PreTrainedTokenizerFast, PreTrainedModel
 from typing import Optional
 
 
-def get_valid_vocab(tokenizer):
+def get_valid_vocab(tokenizer: PreTrainedTokenizerFast, sample_cutoff: int = 1000) -> dict:
+    """
+    This function takes in a model tokenizer, and then returns a dictionary of valid tokens to spell from the tokenizer organised by length of token (leading spaces/underscores).
+
+    Args:
+    tokenizer (transformers.PreTrainedTokenizer): The tokenizer for the model.
+    sample_cutoff (int): Minimum number of tokens that must have the given length for that length to be chosen for testing.
+
+    Outputs:
+    dict: A dictionary containing each a token length, and then the collection of tokens that are this long.
+    """
     full_vocab = []
     valid_chars = set(string.ascii_letters)
     for token in tokenizer.vocab.keys():
@@ -17,19 +27,21 @@ def get_valid_vocab(tokenizer):
             word = word[1:]
         if len(word) > 1 and all(char in valid_chars for char in word):
             full_vocab.append(word)
-    full_vocab = list(set(full_vocab)) #removes duplicates
-
+    full_vocab = list(set(full_vocab)) #removes duplicate after removing leading spaces
     total_vocab_dict = {}
-    long_token_cutoff = len(max(full_vocab, key=len))
+    long_token_cutoff = len(max(full_vocab, key=len)) #find the length of longest token
+
     for i in range(1,long_token_cutoff+1):
         _tmplist = [s for s in full_vocab if len(s) == i]
         if len(_tmplist) == 0:
             continue
         total_vocab_dict[str(i)] = _tmplist
 
-    keys_to_delete = [i for i in total_vocab_dict.keys() if len(total_vocab_dict[i]) < 1000]
+    keys_to_delete = [i for i in total_vocab_dict.keys() if len(total_vocab_dict[i]) < sample_cutoff]
+
     for key in keys_to_delete:
         del total_vocab_dict[key]
+
     return total_vocab_dict
 
 
@@ -47,11 +59,10 @@ def generate_and_score_samples(
     This function takes in various user parameters, iterating over different word lengths and in-context learning (ICL) lengths,
     calculates accuracy scores for each batch and then outputs them to a dict. This can then be turned into a dataframe for plotting and analysis.
 
-    In this script, we hard-code in the gemma tokenizer to form the vocab_dict. This could be further abstracted for future use.
-
     Args:
     model (transformers.PreTrainedModel): The model to use for generation (assumed to be downloaded from Huggingface)
     tokenizer (transformers.PreTrainedTokenizer): The tokenizer for the model.
+    vocab_dict (dict): The dictionary of tokens to test for (assumed to be created by the get_valid_vocab function above)
     samples_per_combo (int): Number of samples to generate for each word length x ICL length combination.
     max_icl_length (int, optional): Maximum in-context learning length. Defaults to 8.
     capitals (str, optional): Capitalization style ('upper', 'lower', or None for original case). Defaults to None.
