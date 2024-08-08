@@ -4,7 +4,11 @@ import torch
 from pytest import approx
 from transformer_lens import HookedTransformer
 
-from sae_spelling.prompting import SpellingPrompt
+from sae_spelling.prompting import (
+    SpellingPrompt,
+    create_icl_prompt,
+    first_letter_formatter,
+)
 from sae_spelling.spelling_grader import SpellingGrader
 
 
@@ -12,13 +16,29 @@ def test_spelling_grader_marks_response_correct_if_model_predicts_correctly(
     gpt2_model: HookedTransformer,
 ):
     # GPT2 should be able to spell the word correctly after seeing 4 ICL examples of it spelled correctly
-    grader = SpellingGrader(
-        gpt2_model, icl_word_list=["correct", "correct", "correct", "correct"]
-    )
+    icl_words = ["correct", "correct", "correct", "correct"]
+    grader = SpellingGrader(gpt2_model, icl_word_list=icl_words)
     grade = grader.grade_word("correct")
     assert grade.is_correct
     assert grade.answer == " c-o-r-r-e-c-t"
     assert grade.prediction == " c-o-r-r-e-c-t"
+    assert grade.answer_log_prob == grade.prediction_log_prob
+    assert grade.prompt == create_icl_prompt("correct", examples=icl_words).base
+
+
+def test_spelling_grader_allows_setting_an_answer_formater(
+    gpt2_model: HookedTransformer,
+):
+    # GPT2 should be able to spell the word correctly after seeing 4 ICL examples of it spelled correctly
+    grader = SpellingGrader(
+        gpt2_model,
+        icl_word_list=["correct", "correct", "correct", "correct"],
+        answer_formatter=first_letter_formatter(capitalize=True),
+    )
+    grade = grader.grade_word("correct")
+    assert grade.is_correct
+    assert grade.answer == " C"
+    assert grade.prediction == " C"
     assert grade.answer_log_prob == grade.prediction_log_prob
 
 

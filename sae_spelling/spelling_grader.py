@@ -16,6 +16,7 @@ from sae_spelling.util import batchify
 @dataclass
 class SpellingGrade:
     word: str
+    prompt: str
     answer: str
     prediction: str
     is_correct: bool
@@ -43,7 +44,7 @@ class SpellingGrader:
                 word,
                 examples=self.icl_word_list,
                 base_template=self.base_template,
-                answer_formatter=spelling_formatter(),
+                answer_formatter=self.answer_formatter,
                 example_separator=self.example_separator,
                 max_icl_examples=self.max_icl_examples,
             )
@@ -76,6 +77,7 @@ class SpellingGrader:
         prediction = tokenizer.decode(prediction_toks)
         return SpellingGrade(
             word=prompt.word,
+            prompt=prompt.base,
             answer=answer,
             prediction=prediction,
             is_correct=is_correct,
