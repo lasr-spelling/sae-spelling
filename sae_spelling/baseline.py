@@ -1,5 +1,7 @@
 import random
 import string
+from collections.abc import Generator
+from typing import Any
 
 import torch
 from tqdm.autonotebook import tqdm
@@ -63,7 +65,7 @@ def generate_and_score_samples(
     char_gap: str = "-",
     example_gap: str = " ",
     batch_size: int = 32,
-) -> dict:
+) -> Generator[dict[str, Any | int | float], Any, Any]:
     """
     This function takes in various user parameters, iterating over different word lengths and in-context learning (ICL) lengths,
     calculates accuracy scores for each batch and then outputs them to a dict. This can then be turned into a dataframe for plotting and analysis.
@@ -135,9 +137,10 @@ def generate_and_score_samples(
                         input_ids = tokenizer(
                             inputs, padding=True, truncation=True, return_tensors="pt"
                         ).to("cuda")
-                        input_length = input_ids["input_ids"].shape[1]
+                        input_length = input_ids["input_ids"].shape[1]  # type: ignore
                         outputs = model.generate(
-                            **input_ids, max_new_tokens=tokens_to_gen
+                            **input_ids,  # type: ignore
+                            max_new_tokens=tokens_to_gen,  # type: ignore
                         )
                         answers = tokenizer.batch_decode(
                             outputs[:, input_length:], skip_special_tokens=True
