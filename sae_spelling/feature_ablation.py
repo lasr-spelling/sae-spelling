@@ -13,6 +13,8 @@ from sae_spelling.sae_utils import (
 )
 from sae_spelling.util import batchify
 
+EPS = 1e-8
+
 
 @dataclass
 class FeatureAblationsOutput:
@@ -32,6 +34,7 @@ def calculate_individual_feature_ablations(
     return_logits: bool = True,
     batch_size: int = 25,
     show_progress: bool = False,
+    firing_threshold: float = EPS,
     # TODO: support not including the error term
 ) -> FeatureAblationsOutput:
     """
@@ -51,6 +54,7 @@ def calculate_individual_feature_ablations(
         return_logits: Whether to return the logits or the loss.
         batch_size: The batch size to use for ablation.
         show_progress: Whether to show a progress bar.
+        firing_threshold: The threshold for a feature to be considered "firing" and thus run ablation. Default is 1e-8.
     """
     input_toks = model.to_tokens(input)
     hook_point = sae.cfg.hook_name
@@ -61,12 +65,14 @@ def calculate_individual_feature_ablations(
         return_type="logits" if return_logits else "loss",
         include_error_term=True,
     )
-    original_score = metric_fn(original_output.model_output).item()
+    original_score = metric_fn(original_output.model_output)
     # if we didn't pass specific features to ablate, try ablating every SAE feature that fired
     if ablate_features is None:
         sae_acts = original_output.sae_activations[hook_point]
         ablate_features = (
-            torch.nonzero(sae_acts.feature_acts[0, ablate_token_index])
+            torch.nonzero(
+                sae_acts.feature_acts[0, ablate_token_index] > firing_threshold
+            )
             .squeeze(-1)
             .tolist()
         )
@@ -85,11 +91,11 @@ def calculate_individual_feature_ablations(
             input_toks.repeat(len(batch), 1),
             fwd_hooks=[(hook_point, ablation_hook)],
         )
-        for feat_idx, output in zip(batch, outputs):
-            score = metric_fn(output.unsqueeze(0)).item()
-            ablation_scores[feat_idx] = score - original_score
+        deltas = (metric_fn(outputs) - original_score).cpu().tolist()
+        for feat_idx, delta in zip(batch, deltas):
+            ablation_scores[feat_idx] = delta
     return FeatureAblationsOutput(
         sae_cache=original_output.sae_activations[hook_point],
         ablation_scores=ablation_scores,
-        original_score=original_score,
+        original_score=original_score.item(),
     )
