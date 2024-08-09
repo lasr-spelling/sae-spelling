@@ -17,6 +17,9 @@ def test_get_valid_vocab(gpt2_tokenizer):
 
 def test_generate_and_score_samples(gpt2_hf_model):
     model, tokenizer = gpt2_hf_model
+    model = model.to(
+        "cpu"
+    )  # sometimes this fails in testing, so trying to enforce this
     vocab_dict = get_valid_vocab(tokenizer)
     generator = generate_and_score_samples(
         model,
