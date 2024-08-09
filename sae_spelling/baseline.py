@@ -129,7 +129,7 @@ def generate_and_score_samples(
                     with torch.no_grad():
                         input_ids = tokenizer(
                             inputs, padding=True, truncation=True, return_tensors="pt"
-                        ).to("cuda")
+                        ).to(model.device)
                         input_length = input_ids["input_ids"].shape[1]  # type: ignore
                         outputs = model.generate(
                             **input_ids,  # type: ignore

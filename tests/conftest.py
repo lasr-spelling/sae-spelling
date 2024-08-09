@@ -1,7 +1,7 @@
 import pytest
 from sae_lens import SAE
 from transformer_lens import HookedTransformer
-from transformers import GPT2Model
+from transformers import GPT2LMHeadModel
 
 
 @pytest.fixture
@@ -30,5 +30,5 @@ def gpt2_l5_sae() -> SAE:
 
 @pytest.fixture
 def gpt2_hf_model(gpt2_model: HookedTransformer):
-    model = GPT2Model.from_pretrained("gpt2", device_map="cpu")
+    model = GPT2LMHeadModel.from_pretrained("gpt2", device_map="cpu")
     return model, gpt2_model.tokenizer
