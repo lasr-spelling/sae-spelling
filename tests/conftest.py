@@ -1,7 +1,7 @@
 import pytest
 from sae_lens import SAE
 from transformer_lens import HookedTransformer
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import GPT2Model
 
 
 @pytest.fixture
@@ -29,8 +29,6 @@ def gpt2_l5_sae() -> SAE:
 
 
 @pytest.fixture
-def hf_gemma2_modeltokenizer():
-    model_name = "gemma-2b"
-    tokenizer = AutoTokenizer.from_pretrained(model_name, device="cpu")
-    model = AutoModelForCausalLM.from_pretrained(model_name, device="cpu")
-    return model, tokenizer
+def gpt2_hf_model(gpt2_model: HookedTransformer):
+    model = GPT2Model.from_pretrained("gpt2", device="cpu")
+    return model, gpt2_model.tokenizer

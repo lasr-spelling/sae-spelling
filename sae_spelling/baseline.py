@@ -1,13 +1,20 @@
 import random
-import string
 from collections.abc import Generator
-from typing import Any
+from dataclasses import dataclass
 
 import torch
 from tqdm.autonotebook import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerFast
 
 from sae_spelling.prompting import create_icl_prompt, spelling_formatter
+from sae_spelling.vocab import get_alpha_tokens
+
+
+@dataclass
+class BaselineResult:
+    word_length: str
+    icl_length: int
+    accuracy: float
 
 
 def get_valid_vocab(
@@ -23,24 +30,16 @@ def get_valid_vocab(
     Outputs:
     dict: A dictionary containing each a token length, and then the collection of tokens that are this long.
     """
-    full_vocab = []
-    valid_chars = set(string.ascii_letters)
-    for token in tokenizer.vocab.keys():
-        word = tokenizer.convert_tokens_to_string([token])
-        if (word[0] == " ") | (word[0] == "▁"):
-            word = word[1:]
-        if len(word) > 1 and all(char in valid_chars for char in word):
-            full_vocab.append(word)
-    full_vocab = list(
-        set(full_vocab)
-    )  # removes duplicate after removing leading spaces
+    alpha_tokens = get_alpha_tokens(tokenizer)
     total_vocab_dict = {}
     long_token_cutoff = len(
-        max(full_vocab, key=len)
+        max(alpha_tokens, key=len)
     )  # find the length of longest token
 
     for i in range(1, long_token_cutoff + 1):
-        _tmplist = [s for s in full_vocab if len(s) == i]
+        _tmplist = [
+            s for s in alpha_tokens if len(s.replace("▁", "")) == i
+        ]  # don't count the leading underscore for token length (▁cat is spelled the same as cat)
         if len(_tmplist) == 0:
             continue
         total_vocab_dict[str(i)] = _tmplist
@@ -65,7 +64,7 @@ def generate_and_score_samples(
     char_gap: str = "-",
     example_gap: str = " ",
     batch_size: int = 32,
-) -> Generator[dict[str, Any | int | float], Any, Any]:
+) -> Generator[BaselineResult]:
     """
     This function takes in various user parameters, iterating over different word lengths and in-context learning (ICL) lengths,
     calculates accuracy scores for each batch and then outputs them to a dict. This can then be turned into a dataframe for plotting and analysis.
@@ -87,7 +86,16 @@ def generate_and_score_samples(
     total_combinations = len(vocab_dict) * max_icl_length
     with tqdm(total=total_combinations, desc="Processing combinations") as pbar:
         for word_length in vocab_dict.keys():
-            words = vocab_dict[word_length]
+            if capitals == "upper":
+                words = [
+                    v for v in vocab_dict[word_length] if v.replace("▁", "").isupper()
+                ]
+            elif capitals == "lower":
+                words = [
+                    v for v in vocab_dict[word_length] if v.replace("▁", "").islower()
+                ]
+            else:
+                words = vocab_dict[word_length]
             tokens_to_gen = (
                 int(word_length) * 2 - 1 if char_gap != " " else int(word_length)
             )
@@ -106,30 +114,15 @@ def generate_and_score_samples(
                     targets = []
                     for w in batch:
                         test_case = create_icl_prompt(
-                            [
-                                w.upper()
-                                if capitals == "upper"
-                                else w.lower()
-                                if capitals == "lower"
-                                else w
-                            ][0],
+                            w,
                             examples=sample_vocab,
                             example_separator=example_gap,
                             answer_formatter=spelling_formatter(
                                 separator=char_gap,
-                                capitalize=[True if capitals == "upper" else False][0],
                             ),
                             max_icl_examples=icl_length,
                         )
-                        inputs.append(
-                            [
-                                test_case.base.upper()
-                                if capitals == "upper"
-                                else test_case.base.lower()
-                                if capitals == "lower"
-                                else test_case.base
-                            ][0]
-                        )
+                        inputs.append(test_case.base)
                         targets.append(test_case.answer)
 
                     # Process batch
@@ -151,10 +144,10 @@ def generate_and_score_samples(
 
                 accuracy = all_correct / total_processed
 
-                yield {
-                    "word_length": word_length,
-                    "icl_length": icl_length,
-                    "accuracy": accuracy,
-                }
+                yield BaselineResult(
+                    word_length=word_length,
+                    icl_length=icl_length,
+                    accuracy=accuracy,
+                )
 
                 pbar.update(1)
