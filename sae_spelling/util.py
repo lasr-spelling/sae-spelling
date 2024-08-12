@@ -26,3 +26,10 @@ def batchify(
 def flip_dict(d: dict[T, T]) -> dict[T, T]:
     """Flip a dictionary, i.e. {a: b} -> {b: a}"""
     return {v: k for k, v in d.items()}
+
+
+def listify(item: T | list[T]) -> list[T]:
+    """Convert an item or list of items to a list."""
+    if isinstance(item, list):
+        return item
+    return [item]
