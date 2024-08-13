@@ -436,10 +436,12 @@ def gen_probe_stats(
     probe: LinearProbe,
     X_val: torch.Tensor,
     y_val: torch.Tensor,
+    threshold: float = 0.5,
     device: torch.device = DEFAULT_DEVICE,
 ) -> list[ProbeStats]:
     """
-    Generate statistics for a trained probe on validation data.
+    Generate statistics for a trained probe on validation data,
+    treating each letter independently.
 
     Args:
         probe: The trained LinearProbe.
@@ -452,7 +454,8 @@ def gen_probe_stats(
     """
 
     def validator_fn(x: torch.Tensor) -> torch.Tensor:
-        return probe(x.clone().detach().to(device)).argmax(dim=1).cpu()
+        logits = probe(x.clone().detach().to(device))
+        return (logits > threshold).float().cpu()
 
     results: list[ProbeStats] = []
 
@@ -460,9 +463,8 @@ def gen_probe_stats(
     y_val_cpu = y_val.cpu()
 
     for i, letter in enumerate(LETTERS):
-        letter_preds = val_preds == i
+        letter_preds = val_preds[:, i]
         letter_val_y = y_val_cpu == i
-
         results.append(
             ProbeStats(
                 letter=letter,
@@ -476,5 +478,4 @@ def gen_probe_stats(
                 ),
             )
         )
-
     return results
