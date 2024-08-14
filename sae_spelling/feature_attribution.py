@@ -14,7 +14,8 @@ from sae_spelling.sae_utils import (
     SaeReconstructionCache,
     apply_saes_and_run,
 )
-from sae_spelling.util import batchify, listify
+from sae_spelling.torch_utils import extract_grad, track_grad
+from sae_spelling.util import batchify, dict_zip, listify
 
 EPS = 1e-8
 
@@ -59,6 +60,7 @@ def calculate_attribution_grads(
     include_saes: dict[str, SAE] | None = None,
     return_logits: bool = True,
     include_error_term: bool = True,
+    extra_fwd_hooks: list[tuple[str, HookPoint]] | None = None,
 ) -> AttributionGrads:
     """
     Wrapper around apply_saes_and_run that calculates gradients wrt to the metric_fn.
@@ -72,6 +74,7 @@ def calculate_attribution_grads(
         track_model_hooks=track_hook_points,
         include_error_term=include_error_term,
         track_grads=True,
+        extra_fwd_hooks=extra_fwd_hooks,
     )
     metric = metric_fn(output.model_output)
     output.zero_grad()
@@ -92,6 +95,7 @@ def calculate_feature_attribution(
     include_saes: dict[str, SAE] | None = None,
     return_logits: bool = True,
     include_error_term: bool = True,
+    extra_fwd_hooks: list[tuple[str, HookPoint]] | None = None,
 ) -> Attribution:
     """
     Calculate feature attribution for SAE features and model neurons following
@@ -118,6 +122,7 @@ def calculate_feature_attribution(
         include_saes=include_saes,
         return_logits=return_logits,
         include_error_term=include_error_term,
+        extra_fwd_hooks=extra_fwd_hooks,
     )
     model_attributions = {}
     model_activations = {}
@@ -130,23 +135,19 @@ def calculate_feature_attribution(
     # and recording grads, acts, and attributions in dictionaries to return to the user
     with torch.no_grad():
         for name, act in outputs_with_grads.model_activations.items():
-            assert act.grad is not None
             raw_activation = act.detach().clone()
             model_attributions[name] = (act.grad * raw_activation).detach().clone()
             model_activations[name] = raw_activation
-            model_grads[name] = act.grad.detach().clone()
+            model_grads[name] = extract_grad(act)
         for name, act in outputs_with_grads.sae_activations.items():
-            assert act.feature_acts.grad is not None
-            assert act.sae_out.grad is not None
             raw_activation = act.feature_acts.detach().clone()
             sae_feature_attributions[name] = (
                 (act.feature_acts.grad * raw_activation).detach().clone()
             )
             sae_feature_activations[name] = raw_activation
-            sae_feature_grads[name] = act.feature_acts.grad.detach().clone()
+            sae_feature_grads[name] = extract_grad(act.feature_acts)
             if include_error_term:
-                assert act.sae_error.grad is not None
-                sae_error_grads[name] = act.sae_error.grad.detach().clone()
+                sae_error_grads[name] = extract_grad(act.sae_error)
         return Attribution(
             model_attributions=model_attributions,
             model_activations=model_activations,
@@ -156,6 +157,10 @@ def calculate_feature_attribution(
             sae_feature_grads=sae_feature_grads,
             sae_error_grads=sae_error_grads,
         )
+
+
+ModelPatch = tuple[Literal["model"], str, torch.Tensor]
+SaePatch = tuple[Literal["sae"], str, tuple[torch.Tensor, torch.Tensor]]
 
 
 def calculate_integrated_gradient_attribution_patching(
@@ -203,6 +208,7 @@ def calculate_integrated_gradient_attribution_patching(
             return_type="logits" if return_logits else "loss",
         )
         original_sae_acts = _extract_sae_acts(original_output)
+        original_sae_errors = _extract_sae_errors(original_output)
         corrupted_output = None
         if corrupted_input is not None:
             corrupted_output = apply_saes_and_run(
@@ -215,6 +221,9 @@ def calculate_integrated_gradient_attribution_patching(
             )
         corrupted_sae_acts = (
             _extract_sae_acts(corrupted_output) if corrupted_output else None
+        )
+        corrupted_sae_errors = (
+            _extract_sae_errors(corrupted_output) if corrupted_output else None
         )
         patch_index_tuples: list[tuple[int, int]] = [
             (i, i) if isinstance(i, int) else i for i in listify(patch_indices)
@@ -231,16 +240,23 @@ def calculate_integrated_gradient_attribution_patching(
             patch_index_tuples,
             interpolation_steps,
         )
-        model_patches: list[tuple[Literal["model", "sae"], str, torch.Tensor]] = [
+        interpolated_sae_errors = _get_interpolation_acts(
+            original_sae_errors,
+            corrupted_sae_errors,
+            patch_index_tuples,
+            interpolation_steps,
+        )
+        model_patches: list[ModelPatch] = [
             ("model", hook_point, act)
             for hook_point, acts in interpolated_hook_point_acts.items()
             for act in acts
         ]
-        sae_patches: list[tuple[Literal["model", "sae"], str, torch.Tensor]] = [
-            ("sae", hook_point, act)
-            for hook_point, acts in interpolated_sae_acts.items()
-            for act in acts
-        ]
+        sae_patches: list[SaePatch] = []
+        for hook_point, (sae_acts, sae_errors) in dict_zip(
+            interpolated_sae_acts, interpolated_sae_errors
+        ):
+            for act, error in zip(sae_acts, sae_errors):
+                sae_patches.append(("sae", hook_point, (act, error)))
         sae_grads: dict[str, list[torch.Tensor]] = defaultdict(list)
         sae_error_grads: dict[str, list[torch.Tensor]] = defaultdict(list)
         model_grads: dict[str, list[torch.Tensor]] = defaultdict(list)
@@ -249,24 +265,37 @@ def calculate_integrated_gradient_attribution_patching(
         with torch.no_grad():
             batch_inputs = input_toks.repeat(len(batch), 1)
         with ExitStack() as stack:
-            for i, (hook_type, hook_point, act) in enumerate(batch):
-                hook = patch_hook(i, act)
-                if hook_type == "model":
+            sae_acts_cache: dict[str, dict[int, torch.Tensor]] = defaultdict(dict)
+            sae_errors_cache: dict[str, dict[int, torch.Tensor]] = defaultdict(dict)
+            error_hooks = []
+            for i, patch in enumerate(batch):
+                if patch[0] == "model":
+                    _hook_type, hook_point, act = patch
+                    hook = patch_hook(i, act)
                     stack.enter_context(model.hooks(fwd_hooks=[(hook_point, hook)]))
                 else:
+                    _hook_type, hook_point, (sae_act, sae_error) = patch
+                    track_grad(sae_act)
+                    track_grad(sae_error)
+                    sae_acts_cache[hook_point][i] = sae_act
+                    sae_errors_cache[hook_point][i] = sae_error
                     assert include_saes is not None
                     sae = include_saes[hook_point]
+                    act_hook = patch_hook(i, sae_act)
+                    error_hook = add_hook(i, sae_error)
+                    error_hooks.append((hook_point, error_hook))
                     stack.enter_context(
-                        sae.hooks(fwd_hooks=[("hook_sae_acts_post", hook)])
+                        sae.hooks(fwd_hooks=[("hook_sae_acts_post", act_hook)])
                     )
             attribution = calculate_feature_attribution(
                 model,
                 input=batch_inputs,
                 include_saes=include_saes,
-                metric_fn=metric_fn,
-                include_error_term=include_error_term,
+                metric_fn=lambda x: metric_fn(x).mean(dim=0),
+                include_error_term=False,  # we'll handle the error term ourselves
                 track_hook_points=track_hook_points,
                 return_logits=return_logits,
+                extra_fwd_hooks=error_hooks,
             )
             with torch.no_grad():
                 for i, (hook_type, hook_point, act) in enumerate(batch):
@@ -276,11 +305,11 @@ def calculate_integrated_gradient_attribution_patching(
                         )
                     else:
                         sae_grads[hook_point].append(
-                            attribution.sae_feature_grads[hook_point][i]
+                            extract_grad(sae_acts_cache[hook_point][i])
                         )
                         if include_error_term:
                             sae_error_grads[hook_point].append(
-                                attribution.sae_error_grads[hook_point][i]
+                                extract_grad(sae_errors_cache[hook_point][i])
                             )
     with torch.no_grad():
         mean_sae_grads = {
@@ -336,10 +365,28 @@ def patch_hook(
     return patch_hook_fn
 
 
+def add_hook(
+    batch_idx: int,
+    patch_act: torch.Tensor,
+) -> Callable[[torch.Tensor, HookPoint], torch.Tensor | None]:
+    def patch_hook_fn(input: torch.Tensor, hook: HookPoint) -> torch.Tensor:  # noqa: ARG001
+        mask = torch.zeros_like(input)
+        mask[batch_idx] = 1
+        return input + patch_act * mask
+
+    return patch_hook_fn
+
+
 def _extract_sae_acts(
     output: ApplySaesAndRunOutput,
 ) -> dict[str, torch.Tensor]:
     return {name: cache.feature_acts for name, cache in output.sae_activations.items()}
+
+
+def _extract_sae_errors(
+    output: ApplySaesAndRunOutput,
+) -> dict[str, torch.Tensor]:
+    return {name: cache.sae_error for name, cache in output.sae_activations.items()}
 
 
 @torch.no_grad()

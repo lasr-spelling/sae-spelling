@@ -5,6 +5,7 @@ import torch
 from tqdm.autonotebook import tqdm
 
 T = TypeVar("T")
+K = TypeVar("K")
 
 
 DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -33,3 +34,12 @@ def listify(item: T | list[T]) -> list[T]:
     if isinstance(item, list):
         return item
     return [item]
+
+
+def dict_zip(*dicts: dict[T, K]) -> Generator[tuple[T, tuple[K, ...]], None, None]:
+    """Zip together multiple dictionaries, iterating their common keys and a tuple of values."""
+    if not dicts:
+        return
+    keys = set(dicts[0]).intersection(*dicts[1:])
+    for key in keys:
+        yield key, tuple(d[key] for d in dicts)

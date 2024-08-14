@@ -20,7 +20,7 @@ def test_calculate_feature_attribution_returns_values_that_look_reasonable(
     mary_token = gpt2_model.tokenizer.encode(" Mary")[0]
 
     def metric_fn(logits: Tensor) -> Tensor:
-        return logits[-1, -1, mary_token]
+        return logits[:, -1, mary_token]
 
     attrib = calculate_feature_attribution(
         gpt2_model,
@@ -65,7 +65,7 @@ def test_calculate_feature_attribution_results_match_josephs_implementation(
     }
 
     def metric_fn(logits: Tensor) -> Tensor:
-        return logits[-1, -1, mary_token]
+        return logits[:, -1, mary_token]
 
     attrib = calculate_feature_attribution(
         gpt2_model,
@@ -105,7 +105,7 @@ def test_calculate_feature_attribution_works_with_fp16_models(
     mary_token = gpt2_model.tokenizer.encode(" Mary")[0]
 
     def metric_fn(logits: Tensor) -> Tensor:
-        return logits[-1, -1, mary_token]
+        return logits[:, -1, mary_token]
 
     attrib = calculate_feature_attribution(
         gpt2_model.to(torch.float16),  # type: ignore
@@ -135,7 +135,7 @@ def test_calculate_feature_attribution_returns_identical_model_attribution_with_
     mary_token = gpt2_model.tokenizer.encode(" Mary")[0]
 
     def metric_fn(logits: Tensor) -> Tensor:
-        return logits[-1, -1, mary_token]
+        return logits[:, -1, mary_token]
 
     prompt = "When John and Mary went to the shops, John gave the bag to"
     track_hook_points = [
@@ -181,7 +181,7 @@ def test_calculate_integrated_gradient_attribution_patching_returns_values_that_
     mary_token = gpt2_model.tokenizer.encode(" Mary")[0]
 
     def metric_fn(logits: Tensor) -> Tensor:
-        return logits[-1, -1, mary_token]
+        return logits[:, -1, mary_token]
 
     attrib = calculate_integrated_gradient_attribution_patching(
         gpt2_model,

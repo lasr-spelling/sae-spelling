@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, Literal, NamedTuple
@@ -7,18 +8,14 @@ from sae_lens import SAE
 from transformer_lens import HookedTransformer
 from transformer_lens.hook_points import HookPoint
 
+from sae_spelling.torch_utils import track_grad
+
 
 class SaeReconstructionCache(NamedTuple):
     sae_in: torch.Tensor
     feature_acts: torch.Tensor
     sae_out: torch.Tensor
     sae_error: torch.Tensor
-
-
-def track_grad(tensor: torch.Tensor) -> None:
-    """wrapper around requires_grad and retain_grad"""
-    tensor.requires_grad_(True)
-    tensor.retain_grad()
 
 
 @dataclass
@@ -47,6 +44,7 @@ def apply_saes_and_run(
     track_model_hooks: list[str] | None = None,
     return_type: Literal["logits", "loss"] = "logits",
     track_grads: bool = False,
+    extra_fwd_hooks: list[tuple[str, HookPoint]] | None = None,
 ) -> ApplySaesAndRunOutput:
     """
     Apply the SAEs to the model at the specific hook points, and run the model.
@@ -62,6 +60,7 @@ def apply_saes_and_run(
         track_model_hooks: a list of hook points to record the activations and gradients. Default None
         return_type: this is passed to the model.run_with_hooks function. Default "logits"
         track_grads: whether to track gradients. Default False
+        extra_fwd_hooks: additional hooks to apply to the model. Default None
     """
 
     fwd_hooks = []
@@ -111,6 +110,8 @@ def apply_saes_and_run(
         bwd_hooks.append((hook_point, sae_bwd_hook))
     for hook_point in track_model_hooks or []:
         fwd_hooks.append((hook_point, partial(tracking_hook, hook_point=hook_point)))
+    if extra_fwd_hooks is not None:
+        fwd_hooks.extend(extra_fwd_hooks)
 
     # now, just run the model while applying the hooks
     with model.hooks(fwd_hooks=fwd_hooks, bwd_hooks=bwd_hooks):
@@ -121,3 +122,18 @@ def apply_saes_and_run(
         model_activations=model_activations,
         sae_activations=sae_activations,
     )
+
+
+@contextmanager
+def sae_error(sae: SAE, use_error_term: bool = True):
+    """
+    Context manager to temporarily set the error term on an SAE.
+
+    Args:
+        sae: the SAE to set the error term on
+        use_error_term: whether to use the error term. Default True
+    """
+    original_error = sae.use_error_term
+    sae.use_error_term = use_error_term
+    yield
+    sae.use_error_term = original_error
