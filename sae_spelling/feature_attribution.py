@@ -291,7 +291,7 @@ def calculate_integrated_gradient_attribution_patching(
                 model,
                 input=batch_inputs,
                 include_saes=include_saes,
-                metric_fn=lambda x: metric_fn(x).mean(dim=0),
+                metric_fn=lambda x: metric_fn(x).sum(dim=0),
                 include_error_term=False,  # we'll handle the error term ourselves
                 track_hook_points=track_hook_points,
                 return_logits=return_logits,
@@ -398,18 +398,20 @@ def _get_interpolation_acts(
 ) -> dict[str, list[torch.Tensor]]:
     interpolated_acts: dict[str, list[torch.Tensor]] = defaultdict(list)
     for name, act in clean_acts.items():
-        for clean_index, corrupted_index in patch_indices:
-            clean_val = act[0, clean_index, :]
-            base_corrupted_val = (
-                corrupted_acts[name][0, corrupted_index, :]
-                if corrupted_acts is not None
-                else torch.zeros_like(clean_val)
-            )
-            for i in range(interpolation_steps):
-                alpha = i / interpolation_steps
-                patch_act = act[0].clone()
-                patch_act[clean_index, :] = (
-                    alpha * clean_val + (1 - alpha) * base_corrupted_val
+        for i in range(interpolation_steps):
+            alpha = i / interpolation_steps
+            patch_act = act[0].clone()
+
+            # this for-loop can likely be made more efficient by replacing with proper torch indexing
+            for clean_index, corrupted_index in patch_indices:
+                clean_val = act[0, clean_index, :]
+                base_corrupted_val = (
+                    corrupted_acts[name][0, corrupted_index, :]
+                    if corrupted_acts is not None
+                    else torch.zeros_like(clean_val)
                 )
-                interpolated_acts[name].append(patch_act)
+                patch_act[clean_index, :] = (
+                    1 - alpha
+                ) * clean_val + alpha * base_corrupted_val
+            interpolated_acts[name].append(patch_act)
     return interpolated_acts

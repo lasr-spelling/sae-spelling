@@ -1,4 +1,5 @@
 import torch
+from nnsight import NNsight
 from pytest import approx
 from sae_lens import SAE
 from torch import Tensor
@@ -9,6 +10,7 @@ from sae_spelling.feature_attribution import (
     calculate_feature_attribution,
     calculate_integrated_gradient_attribution_patching,
 )
+from tests._comparison.feature_circuits_attribution import pe_ig
 from tests._comparison.joseph_grad_attrib import gradient_based_attribution_all_layers
 from tests.test_util import set_sae_dtype
 
@@ -216,6 +218,63 @@ def test_calculate_integrated_gradient_attribution_patching_returns_values_that_
         assert value.sum() > 100
 
 
+def test_calculate_integrated_gradient_attribution_patching_zero_patching_all_indices_matches_the_sparse_feature_circuits_implementation(
+    gpt2_model: HookedTransformer, gpt2_l4_sae: SAE
+):
+    assert gpt2_model.tokenizer is not None
+    mary_token = gpt2_model.tokenizer.encode(" Mary")[0]
+
+    def metric_fn(logits: Tensor) -> Tensor:
+        return logits[:, -1, mary_token]
+
+    text = "When John and Mary went to the shops, John gave the bag to"
+    toks = gpt2_model.to_tokens(text)
+
+    attrib = calculate_integrated_gradient_attribution_patching(
+        gpt2_model,
+        text,
+        metric_fn=metric_fn,
+        include_saes={
+            "blocks.4.hook_resid_post": gpt2_l4_sae,
+        },
+        # Run all indices, since this is what saprmarks does
+        patch_indices=torch.arange(toks.shape[-1]).tolist(),
+        include_error_term=True,
+        batch_size=10,
+    )
+
+    nn_model = NNsight(gpt2_model)
+    submodule = nn_model.blocks[4]
+    dictionaries = {submodule: gpt2_l4_sae}  # type: ignore
+    nn_metric = lambda model: metric_fn(model.unembed.output)
+    saprmarks_attrib = pe_ig(
+        clean=toks,
+        patch=None,
+        model=nn_model,
+        submodules=[submodule],
+        dictionaries=dictionaries,
+        metric_fn=nn_metric,
+        steps=10,
+    )
+
+    assert torch.allclose(
+        attrib.sae_feature_activations["blocks.4.hook_resid_post"],
+        -1 * saprmarks_attrib.deltas[submodule].act,
+    )
+    assert torch.allclose(
+        attrib.sae_feature_grads["blocks.4.hook_resid_post"],
+        saprmarks_attrib.grads[submodule].act,
+    )
+    assert torch.allclose(
+        attrib.sae_error_grads["blocks.4.hook_resid_post"],
+        saprmarks_attrib.grads[submodule].res,
+    )
+    assert torch.allclose(
+        attrib.sae_feature_attributions["blocks.4.hook_resid_post"],
+        saprmarks_attrib.effects[submodule].act,
+    )
+
+
 def test_get_interpolation_acts_zero_ablates_if_no_corrupted_input_is_provided():
     clean_acts = {
         "act1": torch.tensor([1.0, 2.0]).repeat(1, 3, 1),
@@ -232,8 +291,6 @@ def test_get_interpolation_acts_zero_ablates_if_no_corrupted_input_is_provided()
         assert torch.all(interpolated_acts["act2"][i][0] == clean_acts["act2"][0])
         assert torch.all(interpolated_acts["act2"][i][-1] == clean_acts["act2"][-1])
 
-    assert torch.all(
-        interpolated_acts["act1"][0][-2] == torch.zeros_like(clean_acts["act1"])
-    )
-    assert torch.all(interpolated_acts["act1"][1][-2] == clean_acts["act1"] / 3)
-    assert torch.all(interpolated_acts["act1"][2][-2] == 2 * clean_acts["act1"] / 3)
+    assert torch.all(interpolated_acts["act1"][0][-2] == clean_acts["act1"])
+    assert torch.all(interpolated_acts["act1"][1][-2] == 2 * clean_acts["act1"] / 3)
+    assert torch.all(interpolated_acts["act1"][2][-2] == clean_acts["act1"] / 3)
