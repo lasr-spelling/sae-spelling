@@ -167,7 +167,7 @@ def calculate_integrated_gradient_attribution_patching(
     model: HookedTransformer,
     input: str,
     metric_fn: Callable[[torch.Tensor], torch.Tensor],
-    patch_indices: int | list[int | tuple[int, int]],
+    patch_indices: int | list[int | tuple[int, int]] | None = None,
     corrupted_input: str | None = None,
     track_hook_points: list[str] | None = None,
     include_saes: dict[str, SAE] | None = None,
@@ -190,12 +190,14 @@ def calculate_integrated_gradient_attribution_patching(
         patch_indices: The indices to patch in the input. If a single int, will patch that token index with the corresponding
             index from the corrupted input. If a list of ints, will patch each index with the corresponding index in the corrupted input.
             If a list of tuples, the first index is the index to patch, and the second index is the index in the corrupted input to extract the patch from.
+            If None, all indices will be patched (note: if corrupted_input is not the same number of tokens as input, patch_indices MUST be provided)
         corrupted_input: The corrupted input to extract patches from. If None, will use zeros (ablation patching).
         track_hook_points: A list of model hook points to track activations for, if desired
         include_saes: A dictionary of SAEs to include in the calculation. The key is the hook point to apply the SAE to.
         return_logits: Whether to return the model logits or loss. This is passed to TLens, so should match whatever the metric_fn expects (probably logits)
         include_error_term: Whether to include the SAE error term in the calculation. This is recommended, as it ensures that the SAE will not affecting the model output.
         interpolation_steps: The number of interpolation steps to use for the integrated gradients calculation.
+        batch_size: The batch size to use for the calculation.
     """
     with torch.no_grad():
         input_toks = model.to_tokens(input)
@@ -225,6 +227,8 @@ def calculate_integrated_gradient_attribution_patching(
         corrupted_sae_errors = (
             _extract_sae_errors(corrupted_output) if corrupted_output else None
         )
+        if patch_indices is None:
+            patch_indices = list(range(input_toks.shape[-1]))
         patch_index_tuples: list[tuple[int, int]] = [
             (i, i) if isinstance(i, int) else i for i in listify(patch_indices)
         ]
@@ -397,21 +401,21 @@ def _get_interpolation_acts(
     interpolation_steps: int,
 ) -> dict[str, list[torch.Tensor]]:
     interpolated_acts: dict[str, list[torch.Tensor]] = defaultdict(list)
+    clean_indices = [clean_index for clean_index, _ in patch_indices]
+    corrupted_indices = [corrupted_index for _, corrupted_index in patch_indices]
+
     for name, act in clean_acts.items():
         for i in range(interpolation_steps):
             alpha = i / interpolation_steps
             patch_act = act[0].clone()
-
-            # this for-loop can likely be made more efficient by replacing with proper torch indexing
-            for clean_index, corrupted_index in patch_indices:
-                clean_val = act[0, clean_index, :]
-                base_corrupted_val = (
-                    corrupted_acts[name][0, corrupted_index, :]
-                    if corrupted_acts is not None
-                    else torch.zeros_like(clean_val)
-                )
-                patch_act[clean_index, :] = (
-                    1 - alpha
-                ) * clean_val + alpha * base_corrupted_val
+            clean_vals = act[0, clean_indices, :]
+            base_corrupted_vals = (
+                corrupted_acts[name][0, corrupted_indices, :]
+                if corrupted_acts is not None
+                else torch.zeros_like(clean_vals)
+            )
+            patch_act[clean_indices, :] = (
+                1 - alpha
+            ) * clean_vals + alpha * base_corrupted_vals
             interpolated_acts[name].append(patch_act)
     return interpolated_acts
