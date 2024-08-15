@@ -6,7 +6,10 @@ import torch
 from tqdm.autonotebook import tqdm
 from transformers import PreTrainedModel, PreTrainedTokenizerFast
 
-from sae_spelling.prompting import create_icl_prompt, spelling_formatter
+from sae_spelling.prompting import (
+    create_icl_prompt,
+    spelling_formatter,
+)
 from sae_spelling.vocab import get_alpha_tokens
 
 
@@ -64,6 +67,7 @@ def generate_and_score_samples(
     char_gap: str = "-",
     example_gap: str = " ",
     batch_size: int = 32,
+    formatter=None,
 ) -> Generator[BaselineResult]:
     """
     This function takes in various user parameters, iterating over different word lengths and in-context learning (ICL) lengths,
@@ -79,10 +83,15 @@ def generate_and_score_samples(
     char_gap (str, optional): Character to use as separator in spellings. Defaults to '-'.
     example_gap (str, optional): Separator between examples in ICL prompts. Defaults to ' '.
     batch_size (int, optional): Batch size for processing. Defaults to 32.
+    formatter (Formatter, optional): The type of spelling formatter to use for the spelling task, defaults to the spelling formatter.
 
     Yields:
     dict: A dictionary containing 'word_length', 'icl_length', and 'accuracy' for each combination.
     """
+
+    if formatter is None:  # Fallback to Spelling Formatter
+        formatter = spelling_formatter(separator=char_gap)
+
     total_combinations = len(vocab_dict) * max_icl_length
     with tqdm(total=total_combinations, desc="Processing combinations") as pbar:
         for word_length in vocab_dict.keys():
@@ -117,9 +126,7 @@ def generate_and_score_samples(
                             w,
                             examples=sample_vocab,
                             example_separator=example_gap,
-                            answer_formatter=spelling_formatter(
-                                separator=char_gap,
-                            ),
+                            answer_formatter=formatter,
                             max_icl_examples=icl_length,
                         )
                         inputs.append(test_case.base)
