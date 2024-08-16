@@ -201,6 +201,7 @@ def calculate_integrated_gradient_attribution_patching(
     """
     with torch.no_grad():
         input_toks = model.to_tokens(input)
+        # first, run the model on the clean input to get clean activations
         original_output = apply_saes_and_run(
             model,
             saes=include_saes or {},
@@ -212,6 +213,8 @@ def calculate_integrated_gradient_attribution_patching(
         original_sae_acts = _extract_sae_acts(original_output)
         original_sae_errors = _extract_sae_errors(original_output)
         corrupted_output = None
+        # next, if the user provided corrupted input, run the model on the corrupted input to get corrupted activations
+        # TODO: batch this together with the clean input to avoid running the model twice
         if corrupted_input is not None:
             corrupted_output = apply_saes_and_run(
                 model,
@@ -232,6 +235,7 @@ def calculate_integrated_gradient_attribution_patching(
         patch_index_tuples: list[tuple[int, int]] = [
             (i, i) if isinstance(i, int) else i for i in listify(patch_indices)
         ]
+        # build the interpolated activations we'll use for the integrated gradients calculation
         interpolated_hook_point_acts = _get_interpolation_acts(
             original_output.model_activations,
             corrupted_output.model_activations if corrupted_output else None,
@@ -250,6 +254,9 @@ def calculate_integrated_gradient_attribution_patching(
             patch_index_tuples,
             interpolation_steps,
         )
+        # here, we're building a list of all the patches we're running
+        # 1 for each model / SAE patch point and interpolation step
+        # this is so we can batch these together for efficiency in the next step
         model_patches: list[ModelPatch] = [
             ("model", hook_point, act)
             for hook_point, acts in interpolated_hook_point_acts.items()
@@ -271,7 +278,10 @@ def calculate_integrated_gradient_attribution_patching(
         with ExitStack() as stack:
             sae_acts_cache: dict[str, dict[int, torch.Tensor]] = defaultdict(dict)
             sae_errors_cache: dict[str, dict[int, torch.Tensor]] = defaultdict(dict)
+            # annoyingly, we need to track error hooks separately and manually apply them since there's no exit hook point
+            # in SAELens when running sae.encode() and sae.decode() manually, like we're doing here
             error_hooks = []
+            # this exit stack stuff is used to pill on a bunch of hooks to the model to mess with the activations
             for i, patch in enumerate(batch):
                 if patch[0] == "model":
                     _hook_type, hook_point, act = patch
@@ -291,6 +301,7 @@ def calculate_integrated_gradient_attribution_patching(
                     stack.enter_context(
                         sae.hooks(fwd_hooks=[("hook_sae_acts_post", act_hook)])
                     )
+            # Run attribution on the model to collect gradients across the batch
             attribution = calculate_feature_attribution(
                 model,
                 input=batch_inputs,
@@ -315,6 +326,7 @@ def calculate_integrated_gradient_attribution_patching(
                             sae_error_grads[hook_point].append(
                                 extract_grad(sae_errors_cache[hook_point][i])
                             )
+    # Now, take the mean gradient for each hook point and use that to calculate attribution
     with torch.no_grad():
         mean_sae_grads = {
             hook_point: torch.stack(grads).mean(dim=0).detach().clone()
@@ -400,6 +412,10 @@ def _get_interpolation_acts(
     patch_indices: list[tuple[int, int]],
     interpolation_steps: int,
 ) -> dict[str, list[torch.Tensor]]:
+    """
+    This function outputs interpolated activations between the clean and corrupted activations,
+    spaced by `interpolation_steps` steps. This is used for the integrated gradients calculation.
+    """
     interpolated_acts: dict[str, list[torch.Tensor]] = defaultdict(list)
     clean_indices = [clean_index for clean_index, _ in patch_indices]
     corrupted_indices = [corrupted_index for _, corrupted_index in patch_indices]
