@@ -372,36 +372,34 @@ def train_linear_probe_for_task(
     lr: float = 1e-2,
     test_size: float = 0.2,
     random_state: int = 42,
-) -> tuple[LinearProbe, dict[str, torch.Tensor]]:
-    """
-    Train a linear probe for a specific task using the provided DataFrame and activation tensor.
+    weight_decay=1e-4,
+    use_stratify=True,
+):
+    y = np.array(task_df["answer_class"].values)
+    original_indices = task_df.index.values  # Save the original indices
 
-    Args:
-        task_df: DataFrame containing task data.
-        task_activations: Numpy memmap of activation tensors.
-        num_classes: Number of classes for the probe (default: 26).
-        batch_size: Batch size for training (default: 4096).
-        num_epochs: Number of training epochs (default: 50).
-        lr: Learning rate (default: 1e-3).
-        test_size: Proportion of the dataset to include in the validation split (default: 0.2).
-        random_state: Random state for reproducibility (default: 42).
-        device: Torch device to use for training (default: auto-detected).
-
-    Returns:
-        A tuple containing the trained LinearProbe and a dictionary of probe data.
-    """
-    y = task_df["answer_class"].values
-
-    X_train, X_val, y_train, y_val = train_test_split(
-        task_activations, y, test_size=test_size, random_state=random_state
-    )
+    if use_stratify:
+        X_train, X_val, y_train, y_val, train_idx, val_idx = train_test_split(
+            task_activations,
+            y,
+            original_indices,
+            test_size=test_size,
+            stratify=y,
+            random_state=random_state,
+        )
+    else:
+        X_train, X_val, y_train, y_val, train_idx, val_idx = train_test_split(
+            task_activations,
+            y,
+            original_indices,
+            test_size=test_size,
+            random_state=random_state,
+        )
 
     X_train_tensor = torch.from_numpy(X_train).float().to(device).requires_grad_(True)
     y_train_tensor = torch.from_numpy(y_train).long().to(device)
-
     X_val_tensor = torch.from_numpy(X_val).float().to(device)
     y_val_tensor = torch.from_numpy(y_val).long().to(device)
-
     y_train_one_hot = one_hot(y_train_tensor, num_classes=num_classes)
 
     probe = train_multi_probe(
@@ -411,6 +409,7 @@ def train_linear_probe_for_task(
         batch_size=batch_size,
         num_epochs=num_epochs,
         lr=lr,
+        weight_decay=weight_decay,
         show_progress=True,
         verbose=False,
         device=device,
@@ -421,6 +420,8 @@ def train_linear_probe_for_task(
         "X_val": X_val_tensor,
         "y_train": y_train_tensor,
         "y_val": y_val_tensor,
+        "train_idx": train_idx,
+        "val_idx": val_idx,
     }
 
     return probe, probe_data
