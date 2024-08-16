@@ -72,7 +72,8 @@ def generate_and_score_samples(
 ) -> Generator[BaselineResult]:
     """
     This function takes in various user parameters, iterating over different word lengths and in-context learning (ICL) lengths,
-    calculates accuracy scores for each batch and then outputs them to a dict. This can then be turned into a dataframe for plotting and analysis.
+    calculates accuracy scores for each batch and then outputs them to a dict. This can then be turned into a dataframe for plotting and analysis,
+    as well as to verify the original prompt/true answers/model outputs for each combination.
 
     Args:
     model (transformers.PreTrainedModel): The model to use for generation (assumed to be downloaded from Huggingface)
@@ -84,9 +85,11 @@ def generate_and_score_samples(
     char_gap (str, optional): Character to use as separator in spellings. Defaults to '-'.
     example_gap (str, optional): Separator between examples in ICL prompts. Defaults to ' '.
     batch_size (int, optional): Batch size for processing. Defaults to 32.
+    random_seed (int, optional): Random seed for sampling/generation for replication. Defaults to 42.
 
     Yields:
-    dict: A dictionary containing 'word_length', 'icl_length', and 'accuracy' for each combination.
+    dict: A dictionary containing 'word_length', 'icl_length', and 'accuracy' for each combination as summary,
+    as well as 'prompts','expected_answers', and 'model_answers' which include the saved sets from each combination.
     """
     random.seed(random_seed)
     np.random.seed(random_seed)
