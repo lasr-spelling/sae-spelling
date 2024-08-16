@@ -241,15 +241,15 @@ def create_dataset_probe_training(
 
 
 def gen_and_save_df_acts_probing(
-    model,
-    dataset,
+    model: HookedTransformer,
+    dataset: list[tuple[SpellingPrompt, int]],
     path: str,
     hook_point: str,
     task_name: str,
     layer: int,
     batch_size: int = 64,
     position_idx: int = -2,
-):
+) -> tuple[pd.DataFrame, np.memmap] | tuple[None, None]:
     """
     Generate and save activations for probing tasks to the specified path
 
@@ -374,7 +374,22 @@ def train_linear_probe_for_task(
     random_state: int = 42,
     weight_decay=1e-4,
     use_stratify=True,
-):
+) -> tuple[LinearProbe, dict[str, torch.Tensor | list[int]]]:
+    """
+    Train a linear probe for a specific task using the provided DataFrame and activation tensor.
+    Args:
+        task_df: DataFrame containing task data.
+        task_activations: Numpy memmap of activation tensors.
+        num_classes: Number of classes for the probe (default: 26).
+        batch_size: Batch size for training (default: 4096).
+        num_epochs: Number of training epochs (default: 50).
+        lr: Learning rate (default: 1e-2).
+        test_size: Proportion of the dataset to include in the validation split (default: 0.2).
+        random_state: Random state for reproducibility (default: 42).
+        device: Torch device to use for training (default: auto-detected).
+    Returns:
+        A tuple containing the trained LinearProbe and a dictionary of probe data.
+    """
     y = np.array(task_df["answer_class"].values)
     original_indices = task_df.index.values  # Save the original indices
 
