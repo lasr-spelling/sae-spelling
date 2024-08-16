@@ -241,14 +241,15 @@ def create_dataset_probe_training(
 
 
 def gen_and_save_df_acts_probing(
-    model: HookedTransformer,
-    dataset: list[tuple[SpellingPrompt, int]],
+    model,
+    dataset,
     path: str,
     hook_point: str,
     task_name: str,
+    layer: int,
     batch_size: int = 64,
     position_idx: int = -2,
-) -> tuple[pd.DataFrame, np.memmap] | tuple[None, None]:
+):
     """
     Generate and save activations for probing tasks to the specified path
 
@@ -277,12 +278,14 @@ def gen_and_save_df_acts_probing(
             "HOOK_POINT": [hook_point] * len(dataset),
             "answer": [prompt.answer for prompt, _ in dataset],
             "answer_class": [answer_class for _, answer_class in dataset],
+            "token": [prompt.word for prompt, _ in dataset],
         }
     )
     task_df.index.name = "index"
 
     # Create the directory if it doesn't exist
-    task_dir = os.path.join(path, task_name)
+    layer_path = f"layer_{layer}"
+    task_dir = os.path.join(path, task_name, layer_path)
     os.makedirs(task_dir, exist_ok=True)
 
     memmap_path = os.path.join(task_dir, f"{task_name}_act_tensor.dat")
@@ -312,11 +315,10 @@ def gen_and_save_df_acts_probing(
     task_df.to_csv(df_path, index=True)
 
     return task_df, act_tensor_memmap
-    return task_df, act_tensor_memmap
 
 
 def load_df_acts_probing(
-    model: HookedTransformer, path: str, task: str
+    model: HookedTransformer, path: str, task: str, layer: int
 ) -> tuple[pd.DataFrame, np.memmap]:
     """
     Load the DataFrame and activation tensor for a specific probing task.
@@ -334,9 +336,10 @@ def load_df_acts_probing(
         ValueError: If there's a mismatch between DataFrame and activation tensor sizes.
     """
     d_model = model.cfg.d_model
+    layer_path = f"layer_{layer}"
 
-    df_path = os.path.join(path, task, f"{task}_df.csv")
-    act_path = os.path.join(path, task, f"{task}_act_tensor.dat")
+    df_path = os.path.join(path, task, layer_path, f"{task}_df.csv")
+    act_path = os.path.join(path, task, layer_path, f"{task}_act_tensor.dat")
 
     try:
         task_df = pd.read_csv(df_path, index_col="index")
