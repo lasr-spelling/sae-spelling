@@ -21,6 +21,7 @@ pytest = "^8.2.2"
 pyright = "^1.1.370"
 pre-commit = "^3.7.1"
 ipykernel = "^6.29.5"
+nnsight = "^0.2.21"
 
 [build-system]
 requires = ["poetry-core"]
