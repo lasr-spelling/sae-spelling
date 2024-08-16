@@ -325,6 +325,7 @@ def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model):
             tmpdir,
             "test_hook",
             "test_task",
+            layer=0,
             batch_size=2,
             position_idx=-2,
         )
@@ -358,7 +359,7 @@ def test_load_df_acts_probing(mock_read_csv):
         memmap[:] = np.random.rand(100, 768).astype(np.float32)
         memmap.flush()
 
-        df, acts = load_df_acts_probing(mock_model, tmpdir, "test_task")
+        df, acts = load_df_acts_probing(mock_model, tmpdir, "test_task", layer=0)
 
         assert isinstance(df, pd.DataFrame)
         assert isinstance(acts, np.memmap)
@@ -384,7 +385,10 @@ def test_train_linear_probe_for_task():
 
     assert isinstance(probe, LinearProbe)
     assert isinstance(probe_data, dict)
-    assert all(key in probe_data for key in ["X_train", "X_val", "y_train", "y_val"])
+    assert all(
+        key in probe_data
+        for key in ["X_train", "X_val", "y_train", "y_val", "train_idx", "val_idx"]
+    )
 
     # Clean up
     del task_act_tensor
