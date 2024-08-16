@@ -36,3 +36,6 @@ def test_generate_and_score_samples(gpt2_hf_model):
         assert isinstance(result.icl_length, int)
         assert isinstance(result.accuracy, float)
         assert 0 <= result.accuracy <= 1
+        assert isinstance(result.prompts, list)
+        assert isinstance(result.expected_answers, list)
+        assert isinstance(result.model_answers, list)
