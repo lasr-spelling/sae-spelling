@@ -427,6 +427,47 @@ def train_linear_probe_for_task(
     return probe, probe_data
 
 
+def save_probe_and_data(probe, probe_data, probing_path, task, layer):
+    layer_path = f"layer_{layer}"
+    task_dir = os.path.join(probing_path, task, layer_path)
+    os.makedirs(task_dir, exist_ok=True)
+
+    probe_path = os.path.join(task_dir, f"{task}_probe.pth")
+    torch.save(probe, probe_path)
+
+    data_path = os.path.join(task_dir, f"{task}_data.npz")
+    np.savez(
+        data_path,
+        X_train=probe_data["X_train"].cpu().detach().numpy(),
+        X_val=probe_data["X_val"].cpu().detach().numpy(),
+        y_train=probe_data["y_train"].cpu().detach().numpy(),
+        y_val=probe_data["y_val"].cpu().detach().numpy(),
+        train_idx=probe_data["train_idx"],
+        val_idx=probe_data["val_idx"],
+    )
+
+
+def load_probe_and_data(probing_path, task, layer, device=None):
+    layer_path = f"layer_{layer}"
+    task_dir = os.path.join(probing_path, task, layer_path)
+
+    probe_path = os.path.join(task_dir, f"{task}_probe.pth")
+    probe = torch.load(probe_path, map_location=device)
+
+    data_path = os.path.join(task_dir, f"{task}_data.npz")
+    loaded_data = np.load(data_path)
+    probe_data = {
+        "X_train": torch.from_numpy(loaded_data["X_train"]).to(device),
+        "X_val": torch.from_numpy(loaded_data["X_val"]).to(device),
+        "y_train": torch.from_numpy(loaded_data["y_train"]).to(device),
+        "y_val": torch.from_numpy(loaded_data["y_val"]).to(device),
+        "train_idx": loaded_data["train_idx"],
+        "val_idx": loaded_data["val_idx"],
+    }
+
+    return probe, probe_data
+
+
 @dataclass
 class ProbeStats:
     letter: str
