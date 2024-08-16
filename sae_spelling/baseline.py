@@ -2,9 +2,10 @@ import random
 from collections.abc import Generator
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 from tqdm.autonotebook import tqdm
-from transformers import PreTrainedModel, PreTrainedTokenizerFast
+from transformers import PreTrainedModel, PreTrainedTokenizerFast, set_seed
 
 from sae_spelling.prompting import create_icl_prompt, spelling_formatter
 from sae_spelling.vocab import get_alpha_tokens
@@ -15,6 +16,9 @@ class BaselineResult:
     word_length: str
     icl_length: int
     accuracy: float
+    prompts: list[str]
+    expected_answers: list[str]
+    model_answers: list[str]
 
 
 def get_valid_vocab(
@@ -64,10 +68,12 @@ def generate_and_score_samples(
     char_gap: str = "-",
     example_gap: str = " ",
     batch_size: int = 32,
+    random_seed: int = 42,
 ) -> Generator[BaselineResult]:
     """
     This function takes in various user parameters, iterating over different word lengths and in-context learning (ICL) lengths,
-    calculates accuracy scores for each batch and then outputs them to a dict. This can then be turned into a dataframe for plotting and analysis.
+    calculates accuracy scores for each batch and then outputs them to a dict. This can then be turned into a dataframe for plotting and analysis,
+    as well as to verify the original prompt/true answers/model outputs for each combination.
 
     Args:
     model (transformers.PreTrainedModel): The model to use for generation (assumed to be downloaded from Huggingface)
@@ -79,10 +85,18 @@ def generate_and_score_samples(
     char_gap (str, optional): Character to use as separator in spellings. Defaults to '-'.
     example_gap (str, optional): Separator between examples in ICL prompts. Defaults to ' '.
     batch_size (int, optional): Batch size for processing. Defaults to 32.
+    random_seed (int, optional): Random seed for sampling/generation for replication. Defaults to 42.
 
     Yields:
-    dict: A dictionary containing 'word_length', 'icl_length', and 'accuracy' for each combination.
+    dict: A dictionary containing 'word_length', 'icl_length', and 'accuracy' for each combination as summary,
+    as well as 'prompts','expected_answers', and 'model_answers' which include the saved sets from each combination.
     """
+    random.seed(random_seed)
+    np.random.seed(random_seed)
+    torch.manual_seed(random_seed)
+    torch.cuda.manual_seed_all(random_seed)
+    set_seed(random_seed)
+
     total_combinations = len(vocab_dict) * max_icl_length
     with tqdm(total=total_combinations, desc="Processing combinations") as pbar:
         for word_length in vocab_dict.keys():
@@ -107,6 +121,9 @@ def generate_and_score_samples(
                 sample_vocab = [w for w in words if w not in test_vocab]
                 all_correct = 0
                 total_processed = 0
+                batch_prompts = []
+                batch_ground_truth = []
+                batch_model_answers = []
 
                 for i in range(0, len(test_vocab), batch_size):
                     batch = test_vocab[i : i + batch_size]
@@ -139,6 +156,9 @@ def generate_and_score_samples(
                             outputs[:, input_length:], skip_special_tokens=True
                         )
                     all_correct += sum(a == t for a, t in zip(answers, targets))
+                    batch_prompts.extend(inputs)
+                    batch_ground_truth.extend(targets)
+                    batch_model_answers.extend(answers)
                     total_processed += len(batch)
                     torch.cuda.empty_cache()
 
@@ -148,6 +168,9 @@ def generate_and_score_samples(
                     word_length=word_length,
                     icl_length=icl_length,
                     accuracy=accuracy,
+                    prompts=batch_prompts,
+                    expected_answers=batch_ground_truth,
+                    model_answers=batch_model_answers,
                 )
 
                 pbar.update(1)
