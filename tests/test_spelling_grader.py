@@ -26,7 +26,7 @@ def test_spelling_grader_marks_response_correct_if_model_predicts_correctly(
     assert grade.prompt == create_icl_prompt("correct", examples=icl_words).base
 
 
-def test_spelling_grader_allows_setting_an_answer_formater(
+def test_spelling_grader_allows_setting_an_answer_formatter(
     gpt2_model: HookedTransformer,
 ):
     # GPT2 should be able to spell the word correctly after seeing 4 ICL examples of it spelled correctly
@@ -40,6 +40,22 @@ def test_spelling_grader_allows_setting_an_answer_formater(
     assert grade.answer == " C"
     assert grade.prediction == " C"
     assert grade.answer_log_prob == grade.prediction_log_prob
+
+
+def test_spelling_grader_allows_not_shuffling_examples(
+    gpt2_model: HookedTransformer,
+):
+    # GPT2 should be able to spell the word correctly after seeing 4 ICL examples of it spelled correctly
+    grader = SpellingGrader(
+        gpt2_model,
+        icl_word_list=["one", "two", "three", "four", "five"],
+        shuffle_examples=False,
+    )
+    grade = grader.grade_word("correct")
+    assert grade.prompt.index("one") < grade.prompt.index("two")
+    assert grade.prompt.index("two") < grade.prompt.index("three")
+    assert grade.prompt.index("three") < grade.prompt.index("four")
+    assert grade.prompt.index("four") < grade.prompt.index("five")
 
 
 def test_spelling_grader_marks_response_wrong_if_model_predicts_incorrectly(
