@@ -1,3 +1,4 @@
+import gc
 from collections import defaultdict
 from pathlib import Path
 from typing import Callable
@@ -110,10 +111,11 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
     return pd.DataFrame(aucs)
 
 
+@torch.inference_mode()
 def load_and_run_eval_probe_and_top_sae_raw_scores(
     sae_info: SaeInfo,
     tokenizer: PreTrainedTokenizerFast,
-):
+) -> pd.DataFrame:
     sae = load_gemmascope_sae(
         layer=sae_info.layer,
         l0=sae_info.l0,
@@ -123,7 +125,7 @@ def load_and_run_eval_probe_and_top_sae_raw_scores(
     eval_activations, eval_data = load_probe_data_split(
         tokenizer, task="first_letter", layer=sae_info.layer, device="cpu"
     )
-    return eval_probe_and_top_sae_raw_scores(
+    df = eval_probe_and_top_sae_raw_scores(
         sae,
         probe,
         eval_data,
@@ -134,6 +136,12 @@ def load_and_run_eval_probe_and_top_sae_raw_scores(
             "sae_width": sae_info.width,
         },
     )
+    # try to free up as much memory as possible, the 1m SAEs seem to crash things
+    del sae
+    del probe
+    gc.collect()
+    torch.cuda.empty_cache()
+    return df
 
 
 def load_df_or_run(fn: Callable[[], pd.DataFrame], path: Path, force: bool = False):
