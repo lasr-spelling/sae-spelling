@@ -32,6 +32,7 @@ class SpellingGrader:
     base_template: str = "{word}:"
     answer_formatter: Formatter = spelling_formatter()
     example_separator: str = "\n"
+    shuffle_examples: bool = True
 
     def grade_word(self, word: str) -> SpellingGrade:
         return self.grade_words([word])[0]
@@ -47,6 +48,7 @@ class SpellingGrader:
                 answer_formatter=self.answer_formatter,
                 example_separator=self.example_separator,
                 max_icl_examples=self.max_icl_examples,
+                shuffle_examples=self.shuffle_examples,
             )
             for word in words
         ]
