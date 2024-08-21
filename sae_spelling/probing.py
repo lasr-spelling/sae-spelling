@@ -246,6 +246,7 @@ def gen_and_save_df_acts_probing(
     path: str,
     hook_point: str,
     task_name: str,
+    layer: int,
     batch_size: int = 64,
     position_idx: int = -2,
 ) -> tuple[pd.DataFrame, np.memmap] | tuple[None, None]:
@@ -277,12 +278,14 @@ def gen_and_save_df_acts_probing(
             "HOOK_POINT": [hook_point] * len(dataset),
             "answer": [prompt.answer for prompt, _ in dataset],
             "answer_class": [answer_class for _, answer_class in dataset],
+            "token": [prompt.word for prompt, _ in dataset],
         }
     )
     task_df.index.name = "index"
 
     # Create the directory if it doesn't exist
-    task_dir = os.path.join(path, task_name)
+    layer_path = f"layer_{layer}"
+    task_dir = os.path.join(path, task_name, layer_path)
     os.makedirs(task_dir, exist_ok=True)
 
     memmap_path = os.path.join(task_dir, f"{task_name}_act_tensor.dat")
@@ -312,11 +315,10 @@ def gen_and_save_df_acts_probing(
     task_df.to_csv(df_path, index=True)
 
     return task_df, act_tensor_memmap
-    return task_df, act_tensor_memmap
 
 
 def load_df_acts_probing(
-    model: HookedTransformer, path: str, task: str
+    model: HookedTransformer, path: str, task: str, layer: int
 ) -> tuple[pd.DataFrame, np.memmap]:
     """
     Load the DataFrame and activation tensor for a specific probing task.
@@ -334,9 +336,10 @@ def load_df_acts_probing(
         ValueError: If there's a mismatch between DataFrame and activation tensor sizes.
     """
     d_model = model.cfg.d_model
+    layer_path = f"layer_{layer}"
 
-    df_path = os.path.join(path, task, f"{task}_df.csv")
-    act_path = os.path.join(path, task, f"{task}_act_tensor.dat")
+    df_path = os.path.join(path, task, layer_path, f"{task}_df.csv")
+    act_path = os.path.join(path, task, layer_path, f"{task}_act_tensor.dat")
 
     try:
         task_df = pd.read_csv(df_path, index_col="index")
@@ -369,36 +372,49 @@ def train_linear_probe_for_task(
     lr: float = 1e-2,
     test_size: float = 0.2,
     random_state: int = 42,
-) -> tuple[LinearProbe, dict[str, torch.Tensor]]:
+    weight_decay=1e-4,
+    use_stratify=True,
+) -> tuple[LinearProbe, dict[str, torch.Tensor | list[int]]]:
     """
     Train a linear probe for a specific task using the provided DataFrame and activation tensor.
-
     Args:
         task_df: DataFrame containing task data.
         task_activations: Numpy memmap of activation tensors.
         num_classes: Number of classes for the probe (default: 26).
         batch_size: Batch size for training (default: 4096).
         num_epochs: Number of training epochs (default: 50).
-        lr: Learning rate (default: 1e-3).
+        lr: Learning rate (default: 1e-2).
         test_size: Proportion of the dataset to include in the validation split (default: 0.2).
         random_state: Random state for reproducibility (default: 42).
         device: Torch device to use for training (default: auto-detected).
-
     Returns:
         A tuple containing the trained LinearProbe and a dictionary of probe data.
     """
-    y = task_df["answer_class"].values
+    y = np.array(task_df["answer_class"].values)
+    original_indices = task_df.index.values  # Save the original indices
 
-    X_train, X_val, y_train, y_val = train_test_split(
-        task_activations, y, test_size=test_size, random_state=random_state
-    )
+    if use_stratify:
+        X_train, X_val, y_train, y_val, train_idx, val_idx = train_test_split(
+            task_activations,
+            y,
+            original_indices,
+            test_size=test_size,
+            stratify=y,
+            random_state=random_state,
+        )
+    else:
+        X_train, X_val, y_train, y_val, train_idx, val_idx = train_test_split(
+            task_activations,
+            y,
+            original_indices,
+            test_size=test_size,
+            random_state=random_state,
+        )
 
     X_train_tensor = torch.from_numpy(X_train).float().to(device).requires_grad_(True)
     y_train_tensor = torch.from_numpy(y_train).long().to(device)
-
     X_val_tensor = torch.from_numpy(X_val).float().to(device)
     y_val_tensor = torch.from_numpy(y_val).long().to(device)
-
     y_train_one_hot = one_hot(y_train_tensor, num_classes=num_classes)
 
     probe = train_multi_probe(
@@ -408,6 +424,7 @@ def train_linear_probe_for_task(
         batch_size=batch_size,
         num_epochs=num_epochs,
         lr=lr,
+        weight_decay=weight_decay,
         show_progress=True,
         verbose=False,
         device=device,
@@ -418,6 +435,49 @@ def train_linear_probe_for_task(
         "X_val": X_val_tensor,
         "y_train": y_train_tensor,
         "y_val": y_val_tensor,
+        "train_idx": train_idx,
+        "val_idx": val_idx,
+    }
+
+    return probe, probe_data
+
+
+def save_probe_and_data(probe, probe_data, probing_path, task, layer):
+    layer_path = f"layer_{layer}"
+    task_dir = os.path.join(probing_path, task, layer_path)
+    os.makedirs(task_dir, exist_ok=True)
+
+    probe_path = os.path.join(task_dir, f"{task}_probe.pth")
+    torch.save(probe, probe_path)
+
+    data_path = os.path.join(task_dir, f"{task}_data.npz")
+    np.savez(
+        data_path,
+        X_train=probe_data["X_train"].cpu().detach().numpy(),
+        X_val=probe_data["X_val"].cpu().detach().numpy(),
+        y_train=probe_data["y_train"].cpu().detach().numpy(),
+        y_val=probe_data["y_val"].cpu().detach().numpy(),
+        train_idx=probe_data["train_idx"],
+        val_idx=probe_data["val_idx"],
+    )
+
+
+def load_probe_and_data(probing_path, task, layer, device=None):
+    layer_path = f"layer_{layer}"
+    task_dir = os.path.join(probing_path, task, layer_path)
+
+    probe_path = os.path.join(task_dir, f"{task}_probe.pth")
+    probe = torch.load(probe_path, map_location=device)
+
+    data_path = os.path.join(task_dir, f"{task}_data.npz")
+    loaded_data = np.load(data_path)
+    probe_data = {
+        "X_train": torch.from_numpy(loaded_data["X_train"]).to(device),
+        "X_val": torch.from_numpy(loaded_data["X_val"]).to(device),
+        "y_train": torch.from_numpy(loaded_data["y_train"]).to(device),
+        "y_val": torch.from_numpy(loaded_data["y_val"]).to(device),
+        "train_idx": loaded_data["train_idx"],
+        "val_idx": loaded_data["val_idx"],
     }
 
     return probe, probe_data

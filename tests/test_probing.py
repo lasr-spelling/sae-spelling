@@ -296,7 +296,7 @@ def test_create_dataset_probe_training():
 
 @patch("sae_spelling.probing.HookedTransformer")
 @patch("sae_spelling.probing.pd.DataFrame.to_csv")
-def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model):
+def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model, tmp_path):
     dataset = [
         (
             SpellingPrompt(
@@ -317,53 +317,51 @@ def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model):
     }
     mock_model.run_with_cache.return_value = (None, mock_cache)
 
-    # temporary directory for memmap
-    with tempfile.TemporaryDirectory() as tmpdir:
-        df, memmap = gen_and_save_df_acts_probing(
-            mock_model,
-            dataset,
-            tmpdir,
-            "test_hook",
-            "test_task",
-            batch_size=2,
-            position_idx=-2,
-        )
+    df, memmap = gen_and_save_df_acts_probing(
+        mock_model,
+        dataset,
+        tmp_path,
+        "test_hook",
+        "test_task",
+        layer=0,
+        batch_size=2,
+        position_idx=-2,
+    )
 
-        assert isinstance(df, pd.DataFrame)
-        assert isinstance(memmap, np.memmap)
-        assert mock_to_csv.called
+    assert isinstance(df, pd.DataFrame)
+    assert isinstance(memmap, np.memmap)
+    assert mock_to_csv.called
 
-        # Check if the memmap file was created
-        memmap_path = os.path.join(tmpdir, "test_task", "test_task_act_tensor.dat")
-        assert os.path.exists(memmap_path)
-        assert memmap.shape == (2, 768)  # 2 samples, 768 dimensions
-
-    # the temporary directory is autocleaned here
+    # Check if the memmap file was created
+    memmap_path = os.path.join(
+        tmp_path, "test_task", "layer_0", "test_task_act_tensor.dat"
+    )
+    assert os.path.exists(memmap_path)
+    assert memmap.shape == (2, 768)  # 2 samples, 768 dimensions
 
 
 @patch("sae_spelling.probing.pd.read_csv")
-def test_load_df_acts_probing(mock_read_csv):
+def test_load_df_acts_probing(mock_read_csv, tmp_path):
     mock_model = Mock()
     mock_model.cfg.d_model = 768
 
     mock_df = pd.DataFrame({"index": range(100)})
     mock_read_csv.return_value = mock_df
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        task_dir = os.path.join(tmpdir, "test_task")
-        os.makedirs(task_dir)
+    task_dir = os.path.join(tmp_path, "test_task", "layer_0")
+    os.makedirs(task_dir, exist_ok=True)
 
-        memmap_path = os.path.join(task_dir, "test_task_act_tensor.dat")
-        memmap = np.memmap(memmap_path, dtype="float32", mode="w+", shape=(100, 768))
-        memmap[:] = np.random.rand(100, 768).astype(np.float32)
-        memmap.flush()
+    memmap_path = os.path.join(task_dir, "test_task_act_tensor.dat")
+    memmap = np.memmap(memmap_path, dtype="float32", mode="w+", shape=(100, 768))
+    memmap[:] = np.random.rand(100, 768).astype(np.float32)
+    memmap.flush()
 
-        df, acts = load_df_acts_probing(mock_model, tmpdir, "test_task")
+    df, acts = load_df_acts_probing(mock_model, tmp_path, "test_task", layer=0)
 
-        assert isinstance(df, pd.DataFrame)
-        assert isinstance(acts, np.memmap)
-        assert df.shape[0] == acts.shape[0]
-        assert acts.shape == (100, 768)
+    assert isinstance(df, pd.DataFrame)
+    assert isinstance(acts, np.memmap)
+    assert df.shape[0] == acts.shape[0]
+    assert acts.shape == (100, 768)
 
 
 def test_train_linear_probe_for_task():
@@ -384,7 +382,10 @@ def test_train_linear_probe_for_task():
 
     assert isinstance(probe, LinearProbe)
     assert isinstance(probe_data, dict)
-    assert all(key in probe_data for key in ["X_train", "X_val", "y_train", "y_val"])
+    assert all(
+        key in probe_data
+        for key in ["X_train", "X_val", "y_train", "y_val", "train_idx", "val_idx"]
+    )
 
     # Clean up
     del task_act_tensor
