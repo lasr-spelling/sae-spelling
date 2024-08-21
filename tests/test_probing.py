@@ -317,8 +317,8 @@ def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model):
     }
     mock_model.run_with_cache.return_value = (None, mock_cache)
 
-    # temporary directory for memmap
-    with tempfile.TemporaryDirectory() as tmpdir:
+    tmpdir = tempfile.mkdtemp()
+    try:
         df, memmap = gen_and_save_df_acts_probing(
             mock_model,
             dataset,
@@ -335,11 +335,16 @@ def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model):
         assert mock_to_csv.called
 
         # Check if the memmap file was created
-        memmap_path = os.path.join(tmpdir, "test_task", "test_task_act_tensor.dat")
+        memmap_path = os.path.join(
+            tmpdir, "test_task", "layer_0", "test_task_act_tensor.dat"
+        )
         assert os.path.exists(memmap_path)
         assert memmap.shape == (2, 768)  # 2 samples, 768 dimensions
+    finally:
+        # Clean up the temporary directory
+        import shutil
 
-    # the temporary directory is autocleaned here
+        shutil.rmtree(tmpdir)
 
 
 @patch("sae_spelling.probing.pd.read_csv")
@@ -350,9 +355,10 @@ def test_load_df_acts_probing(mock_read_csv):
     mock_df = pd.DataFrame({"index": range(100)})
     mock_read_csv.return_value = mock_df
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        task_dir = os.path.join(tmpdir, "test_task")
-        os.makedirs(task_dir)
+    tmpdir = tempfile.mkdtemp()
+    try:
+        task_dir = os.path.join(tmpdir, "test_task", "layer_0")
+        os.makedirs(task_dir, exist_ok=True)
 
         memmap_path = os.path.join(task_dir, "test_task_act_tensor.dat")
         memmap = np.memmap(memmap_path, dtype="float32", mode="w+", shape=(100, 768))
@@ -365,6 +371,11 @@ def test_load_df_acts_probing(mock_read_csv):
         assert isinstance(acts, np.memmap)
         assert df.shape[0] == acts.shape[0]
         assert acts.shape == (100, 768)
+    finally:
+        # Clean up the temporary directory
+        import shutil
+
+        shutil.rmtree(tmpdir)
 
 
 def test_train_linear_probe_for_task():
