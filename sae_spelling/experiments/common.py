@@ -95,7 +95,11 @@ def load_probe_data_split(
     np_data = np.load(
         Path(probes_dir) / task / f"layer_{layer}" / f"{task}_data.npz",
     )
-    df = pd.read_csv(Path(probes_dir) / task / f"layer_{layer}" / f"{task}_df.csv")
+    df = pd.read_csv(
+        Path(probes_dir) / task / f"layer_{layer}" / f"{task}_df.csv",
+        keep_default_na=False,
+        na_values=[""],
+    )
     activations = torch.from_numpy(np_data[f"X_{split}"]).to(device, dtype=dtype)
     labels = np_data[f"y_{split}"].tolist()
     indices: list[int] = np_data[f"{split}_idx"].tolist()
@@ -118,10 +122,8 @@ def _parse_probe_data_split(
         for idx, label in zip(split_indices, split_labels)
     ]
     for idx, (token, label) in enumerate(raw_tokens_with_labels):
-        if not isinstance(token, str):  # there are some NaNs in the data somehow
-            continue
         # sometimes we have tokens that look like <0x6A>
-        if "<" in token or ">" in token or re.match(r"\d", token):
+        if not isinstance(token, str) or re.match(r"[\d<>]", token):
             continue
         vocab_with_labels.append((tokenizer.convert_tokens_to_string([token]), label))
         valid_act_indices.append(idx)
