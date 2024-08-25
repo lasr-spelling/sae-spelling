@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 import numpy as np
 import pandas as pd
@@ -165,3 +165,13 @@ def get_gemmascope_saes_info(layer: int | None = None) -> list[SaeInfo]:
         if layer is None or sae_layer == layer:
             saes.append(SaeInfo(l0, sae_layer, width, sae_path))
     return saes
+
+
+def load_df_or_run(fn: Callable[[], pd.DataFrame], path: Path, force: bool = False):
+    if force or not path.exists():
+        df = fn()
+        df.to_parquet(path, index=False)
+    else:
+        print(f"{path} exists, loading from disk")
+        df = pd.read_parquet(path)
+    return df

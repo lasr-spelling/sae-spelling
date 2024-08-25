@@ -1,7 +1,5 @@
-import gc
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -15,12 +13,15 @@ from sae_spelling.experiments.common import (
     EXPERIMENTS_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
+    load_df_or_run,
     load_gemmascope_sae,
     load_probe,
     load_probe_data_split,
 )
 from sae_spelling.probing import LinearProbe
 from sae_spelling.vocab import LETTERS
+
+EXPERIMENT_NAME = "encoder_auroc_and_f1"
 
 
 @torch.inference_mode()
@@ -39,8 +40,8 @@ def eval_probe_and_top_sae_raw_scores(
         .topk(topk, dim=-1)
         .indices.cpu()
     )
+    probe = probe.cpu()
     top_feat_dirs = [norm_W_enc.T[top_sae_feats[:, i]].cpu() for i in range(topk)]
-    probe_dirs = probe.weights.cpu()
     top_sae_feats_list = top_sae_feats.tolist()
 
     vocab_scores = []
@@ -50,7 +51,7 @@ def eval_probe_and_top_sae_raw_scores(
         sae_scores_topk = [
             (token_act @ top_feat_dirs[i].T).tolist() for i in range(topk)
         ]
-        probe_scores = (token_act @ probe_dirs.T).tolist()
+        probe_scores = probe(token_act).tolist()
         token_scores: dict[str, float | str | int] = {
             "token": token,
             "answer_letter": LETTERS[answer_idx],
@@ -136,29 +137,15 @@ def load_and_run_eval_probe_and_top_sae_raw_scores(
             "sae_width": sae_info.width,
         },
     )
-    # try to free up as much memory as possible, the 1m SAEs seem to crash things
-    del sae
-    del probe
-    gc.collect()
-    torch.cuda.empty_cache()
-    return df
-
-
-def load_df_or_run(fn: Callable[[], pd.DataFrame], path: Path, force: bool = False):
-    if force or not path.exists():
-        df = fn()
-        df.to_parquet(path, index=False)
-    else:
-        print(f"{path} exists, loading from disk")
-        df = pd.read_parquet(path)
     return df
 
 
 def run_encoder_auroc_and_f1_experiments(
     layers: list[int],
-    output_dir: Path | str = EXPERIMENTS_DIR / "encoder_auroc_and_f1",
+    output_dir: Path | str = EXPERIMENTS_DIR / EXPERIMENT_NAME,
     task: str = "first_letter",
     force: bool = False,
+    skip_1m_saes: bool = False,
 ) -> dict[int, list[tuple[pd.DataFrame, pd.DataFrame, SaeInfo]]]:
     output_dir = Path(output_dir)
 
@@ -181,6 +168,8 @@ def run_encoder_auroc_and_f1_experiments(
             results_by_layer[layer] = []
             sae_infos = get_gemmascope_saes_info(layer)
             for sae_info in sae_infos:
+                if skip_1m_saes and sae_info.l0 == 1_000_000:
+                    continue
                 raw_results_path = (
                     task_output_dir
                     / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_raw_results.parquet"

@@ -37,6 +37,10 @@ class LinearProbe(nn.Module):
     def weights(self):
         return self.fc.weight
 
+    @property
+    def biases(self):
+        return self.fc.bias
+
 
 def _calc_pos_weights(y: torch.Tensor) -> torch.Tensor:
     num_pos_samples = y.sum(dim=0)
@@ -146,7 +150,10 @@ def train_binary_probe(
 
 
 def _get_exponential_decay_scheduler(
-    optimizer: optim.Optimizer, start_lr: float, end_lr: float, num_steps: int
+    optimizer: optim.Optimizer,  # type: ignore
+    start_lr: float,
+    end_lr: float,
+    num_steps: int,
 ) -> optim.lr_scheduler.ExponentialLR:
     gamma = exp(log(end_lr / start_lr) / num_steps)
     return optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
@@ -168,11 +175,11 @@ def _run_probe_training(
 ) -> None:
     probe.train()
     if optimizer_name == "Adam":
-        optimizer = optim.Adam(probe.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = optim.Adam(probe.parameters(), lr=lr, weight_decay=weight_decay)  # type: ignore
     elif optimizer_name == "SGD":
-        optimizer = optim.SGD(probe.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = optim.SGD(probe.parameters(), lr=lr, weight_decay=weight_decay)  # type: ignore
     elif optimizer_name == "AdamW":
-        optimizer = optim.AdamW(probe.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = optim.AdamW(probe.parameters(), lr=lr, weight_decay=weight_decay)  # type: ignore
     else:
         raise ValueError(f"Unknown optimizer: {optimizer_name}")
     scheduler = _get_exponential_decay_scheduler(
