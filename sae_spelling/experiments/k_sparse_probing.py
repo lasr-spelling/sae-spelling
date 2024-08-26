@@ -234,10 +234,12 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
         y = (results_df["answer_letter"] == letter).values
         pred_probe = results_df[f"score_probe_{letter}"].values
         auc_probe = metrics.roc_auc_score(y, pred_probe)
+        f1_probe = metrics.f1_score(y, pred_probe > 0.0)
         best_f1_bias_probe, f1_probe = find_optimal_f1_threshold(y, pred_probe)
 
         auc_info = {
             "auc_probe": auc_probe,
+            "f1_probe": f1_probe,
             "f1_probe_best": f1_probe,
             "bias_f1_probe_best": best_f1_bias_probe,
             "letter": letter,
@@ -248,9 +250,13 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
         for k in KS:
             pred_sae = results_df[f"score_sparse_sae_{letter}_k_{k}"].values
             auc_sae = metrics.roc_auc_score(y, pred_sae)
+            f1 = metrics.f1_score(y, pred_sae > 0.0)
+            f1_half = metrics.f1_score(y, pred_sae > 0.5)
             auc_info[f"auc_sparse_sae_{k}"] = auc_sae
-            best_f1_bias_sae, f1_sae = find_optimal_f1_threshold(y, pred_sae)
-            auc_info[f"f1_sparse_sae_{k}_best"] = f1_sae
+            best_f1_bias_sae, f1_sae_best = find_optimal_f1_threshold(y, pred_sae)
+            auc_info[f"f1_sparse_sae_{k}"] = f1
+            auc_info[f"f1_sparse_sae_{k}_half"] = f1_half
+            auc_info[f"f1_sparse_sae_{k}_best"] = f1_sae_best
             auc_info[f"bias_f1_sparse_sae_{k}_best"] = best_f1_bias_sae
             auc_info[f"sparse_sae_k_{k}_feats"] = results_df[
                 f"sparse_sae_{letter}_k_{k}_feats"

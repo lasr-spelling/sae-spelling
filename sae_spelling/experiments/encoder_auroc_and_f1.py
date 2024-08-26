@@ -22,6 +22,7 @@ from sae_spelling.probing import LinearProbe
 from sae_spelling.vocab import LETTERS
 
 EXPERIMENT_NAME = "encoder_auroc_and_f1"
+EPS = 1e-8
 
 
 @torch.inference_mode()
@@ -92,11 +93,14 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
         y = (results_df["answer_letter"] == letter).values
         pred_probe = results_df[f"score_probe_{letter}"].values
         auc_probe = metrics.roc_auc_score(y, pred_probe)
-        _, f1_probe = find_optimal_f1_threshold(y, pred_probe)
+        f1_probe = metrics.f1_score(y, pred_probe > 0)
+        best_f1_bias_probe, f1_probe_best = find_optimal_f1_threshold(y, pred_probe)
 
         auc_info = {
             "auc_probe": auc_probe,
             "f1_probe": f1_probe,
+            "f1_probe_best": f1_probe_best,
+            "bias_f1_probe_best": best_f1_bias_probe,
             "letter": letter,
             "sae_l0": sae_info.l0,
             "sae_width": sae_info.width,
@@ -105,9 +109,11 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
         for topk_i in range(topk):
             pred_sae = results_df[f"score_sae_{letter}_top_{topk_i}"].values
             auc_sae = metrics.roc_auc_score(y, pred_sae)
+            f1 = metrics.f1_score(y, pred_sae > EPS)
             auc_info[f"auc_sae_top_{topk_i}"] = auc_sae
-            best_f1_bias_sae, f1_sae = find_optimal_f1_threshold(y, pred_sae)
-            auc_info[f"f1_sae_top_{topk_i}_best"] = f1_sae
+            best_f1_bias_sae, f1_best = find_optimal_f1_threshold(y, pred_sae)
+            auc_info[f"f1_sae_top_{topk_i}"] = f1
+            auc_info[f"f1_sae_top_{topk_i}_best"] = f1_best
             auc_info[f"bias_f1_sae_top_{topk_i}_best"] = best_f1_bias_sae
             auc_info[f"sae_top_{topk_i}_feat"] = results_df[
                 f"sae_{letter}_top_{topk_i}_feat"
