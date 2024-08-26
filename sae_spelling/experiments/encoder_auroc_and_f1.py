@@ -41,7 +41,9 @@ def eval_probe_and_top_sae_raw_scores(
         .indices.cpu()
     )
     probe = probe.cpu()
-    top_feat_dirs = [norm_W_enc.T[top_sae_feats[:, i]].cpu() for i in range(topk)]
+    top_feat_weights = [sae.W_enc.T[top_sae_feats[:, i]].cpu() for i in range(topk)]
+    top_feat_biases = [sae.b_enc[top_sae_feats[:, i]].cpu() for i in range(topk)]
+
     top_sae_feats_list = top_sae_feats.tolist()
 
     vocab_scores = []
@@ -49,7 +51,8 @@ def eval_probe_and_top_sae_raw_scores(
         zip(eval_activations, eval_labels), total=len(eval_labels)
     ):
         sae_scores_topk = [
-            (token_act @ top_feat_dirs[i].T).tolist() for i in range(topk)
+            (token_act @ top_feat_weights[i].T + top_feat_biases[i]).tolist()
+            for i in range(topk)
         ]
         probe_scores = probe(token_act).tolist()
         token_scores: dict[str, float | str | int] = {
@@ -103,8 +106,9 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
             pred_sae = results_df[f"score_sae_{letter}_top_{topk_i}"].values
             auc_sae = metrics.roc_auc_score(y, pred_sae)
             auc_info[f"auc_sae_top_{topk_i}"] = auc_sae
-            _, f1_sae = find_optimal_f1_threshold(y, pred_sae)
-            auc_info[f"f1_sae_top_{topk_i}"] = f1_sae
+            best_f1_bias_sae, f1_sae = find_optimal_f1_threshold(y, pred_sae)
+            auc_info[f"f1_sae_top_{topk_i}_best"] = f1_sae
+            auc_info[f"bias_f1_sae_top_{topk_i}_best"] = best_f1_bias_sae
             auc_info[f"sae_top_{topk_i}_feat"] = results_df[
                 f"sae_{letter}_top_{topk_i}_feat"
             ].values[0]

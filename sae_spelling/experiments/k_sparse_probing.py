@@ -178,7 +178,6 @@ def eval_probe_and_sae_k_sparse_raw_scores(
                 k_probe = k_probes[letter_i]
                 k_probe_score = k_probe(sae_acts)
                 token_scores[f"score_sparse_sae_{letter}_k_{k}"] = k_probe_score.item()
-                token_scores[f"bias_sparse_sae_{letter}_k_{k}"] = k_probe.bias.item()
                 token_scores[f"sparse_sae_{letter}_k_{k}_feats"] = (
                     k_probe.feature_ids.tolist()
                 )
@@ -241,7 +240,6 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
             "auc_probe": auc_probe,
             "f1_probe_best": f1_probe,
             "bias_f1_probe_best": best_f1_bias_probe,
-            "bias_probe": results_df[f"bias_probe_{letter}"].values[0],
             "letter": letter,
             "sae_l0": sae_info.l0,
             "sae_width": sae_info.width,
@@ -254,9 +252,6 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
             best_f1_bias_sae, f1_sae = find_optimal_f1_threshold(y, pred_sae)
             auc_info[f"f1_sparse_sae_{k}_best"] = f1_sae
             auc_info[f"bias_f1_sparse_sae_{k}_best"] = best_f1_bias_sae
-            auc_info[f"bias_sparse_sae_{k}"] = results_df[
-                f"bias_sparse_sae_{letter}_k_{k}"
-            ].values[0]
             auc_info[f"sparse_sae_k_{k}_feats"] = results_df[
                 f"sparse_sae_{letter}_k_{k}_feats"
             ].values[0]
