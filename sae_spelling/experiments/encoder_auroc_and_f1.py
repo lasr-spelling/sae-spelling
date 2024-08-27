@@ -94,12 +94,22 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
         pred_probe = results_df[f"score_probe_{letter}"].values
         auc_probe = metrics.roc_auc_score(y, pred_probe)
         f1_probe = metrics.f1_score(y, pred_probe > 0)
+        recall_probe = metrics.recall_score(y, pred_probe > 0)
+        precision_probe = metrics.precision_score(y, pred_probe > 0)
         best_f1_bias_probe, f1_probe_best = find_optimal_f1_threshold(y, pred_probe)
+        recall_probe_best = metrics.recall_score(y, pred_probe > best_f1_bias_probe)
+        precision_probe_best = metrics.precision_score(
+            y, pred_probe > best_f1_bias_probe
+        )
 
         auc_info = {
             "auc_probe": auc_probe,
             "f1_probe": f1_probe,
             "f1_probe_best": f1_probe_best,
+            "recall_probe": recall_probe,
+            "precision_probe": precision_probe,
+            "recall_probe_best": recall_probe_best,
+            "precision_probe_best": precision_probe_best,
             "bias_f1_probe_best": best_f1_bias_probe,
             "letter": letter,
             "sae_l0": sae_info.l0,
@@ -110,10 +120,18 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
             pred_sae = results_df[f"score_sae_{letter}_top_{topk_i}"].values
             auc_sae = metrics.roc_auc_score(y, pred_sae)
             f1 = metrics.f1_score(y, pred_sae > EPS)
+            recall = metrics.recall_score(y, pred_sae > EPS)
+            precision = metrics.precision_score(y, pred_sae > EPS)
             auc_info[f"auc_sae_top_{topk_i}"] = auc_sae
             best_f1_bias_sae, f1_best = find_optimal_f1_threshold(y, pred_sae)
+            recall_best = metrics.recall_score(y, pred_sae > best_f1_bias_sae)
+            precision_best = metrics.precision_score(y, pred_sae > best_f1_bias_sae)
             auc_info[f"f1_sae_top_{topk_i}"] = f1
+            auc_info[f"recall_sae_top_{topk_i}"] = recall
+            auc_info[f"precision_sae_top_{topk_i}"] = precision
             auc_info[f"f1_sae_top_{topk_i}_best"] = f1_best
+            auc_info[f"recall_sae_top_{topk_i}_best"] = recall_best
+            auc_info[f"precision_sae_top_{topk_i}_best"] = precision_best
             auc_info[f"bias_f1_sae_top_{topk_i}_best"] = best_f1_bias_sae
             auc_info[f"sae_top_{topk_i}_feat"] = results_df[
                 f"sae_{letter}_top_{topk_i}_feat"
@@ -184,10 +202,6 @@ def run_encoder_auroc_and_f1_experiments(
                     task_output_dir
                     / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_raw_results.parquet"
                 )
-                auroc_results_path = (
-                    task_output_dir
-                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_auroc_f1.parquet"
-                )
                 raw_results_df = load_df_or_run(
                     lambda: load_and_run_eval_probe_and_top_sae_raw_scores(
                         sae_info, tokenizer
@@ -195,11 +209,7 @@ def run_encoder_auroc_and_f1_experiments(
                     raw_results_path,
                     force=force,
                 )
-                auroc_results_df = load_df_or_run(
-                    lambda: build_f1_and_auroc_df(raw_results_df, sae_info),
-                    auroc_results_path,
-                    force=force,
-                )
+                auroc_results_df = build_f1_and_auroc_df(raw_results_df, sae_info)
                 results_by_layer[layer].append(
                     (raw_results_df, auroc_results_df, sae_info)
                 )

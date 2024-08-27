@@ -235,12 +235,22 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
         pred_probe = results_df[f"score_probe_{letter}"].values
         auc_probe = metrics.roc_auc_score(y, pred_probe)
         f1_probe = metrics.f1_score(y, pred_probe > 0.0)
+        recall_probe = metrics.recall_score(y, pred_probe > 0.0)
+        precision_probe = metrics.precision_score(y, pred_probe > 0.0)
         best_f1_bias_probe, f1_probe = find_optimal_f1_threshold(y, pred_probe)
+        recall_probe_best = metrics.recall_score(y, pred_probe > best_f1_bias_probe)
+        precision_probe_best = metrics.precision_score(
+            y, pred_probe > best_f1_bias_probe
+        )
 
         auc_info = {
             "auc_probe": auc_probe,
             "f1_probe": f1_probe,
             "f1_probe_best": f1_probe,
+            "recall_probe": recall_probe,
+            "precision_probe": precision_probe,
+            "recall_probe_best": recall_probe_best,
+            "precision_probe_best": precision_probe_best,
             "bias_f1_probe_best": best_f1_bias_probe,
             "letter": letter,
             "sae_l0": sae_info.l0,
@@ -251,10 +261,18 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
             pred_sae = results_df[f"score_sparse_sae_{letter}_k_{k}"].values
             auc_sae = metrics.roc_auc_score(y, pred_sae)
             f1 = metrics.f1_score(y, pred_sae > 0.0)
+            recall = metrics.recall_score(y, pred_sae > 0.0)
+            precision = metrics.precision_score(y, pred_sae > 0.0)
             f1_half = metrics.f1_score(y, pred_sae > 0.5)
             auc_info[f"auc_sparse_sae_{k}"] = auc_sae
             best_f1_bias_sae, f1_sae_best = find_optimal_f1_threshold(y, pred_sae)
+            recall_sae_best = metrics.recall_score(y, pred_sae > best_f1_bias_sae)
+            precision_sae_best = metrics.precision_score(y, pred_sae > best_f1_bias_sae)
             auc_info[f"f1_sparse_sae_{k}"] = f1
+            auc_info[f"recall_sparse_sae_{k}"] = recall
+            auc_info[f"recall_sparse_sae_{k}_best"] = recall_sae_best
+            auc_info[f"precision_sparse_sae_{k}"] = precision
+            auc_info[f"precision_sparse_sae_{k}_best"] = precision_sae_best
             auc_info[f"f1_sparse_sae_{k}_half"] = f1_half
             auc_info[f"f1_sparse_sae_{k}_best"] = f1_sae_best
             auc_info[f"bias_f1_sparse_sae_{k}_best"] = best_f1_bias_sae
@@ -298,10 +316,6 @@ def run_k_sparse_probing_experiments(
                     task_output_dir
                     / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_post_act_{sae_post_act}_raw_results.parquet"
                 )
-                auroc_results_path = (
-                    task_output_dir
-                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_post_act_{sae_post_act}_auroc_f1.parquet"
-                )
                 raw_results_df = load_df_or_run(
                     lambda: load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
                         sae_info, tokenizer, sae_post_act
@@ -309,11 +323,7 @@ def run_k_sparse_probing_experiments(
                     raw_results_path,
                     force=force,
                 )
-                auroc_results_df = load_df_or_run(
-                    lambda: build_f1_and_auroc_df(raw_results_df, sae_info),
-                    auroc_results_path,
-                    force=force,
-                )
+                auroc_results_df = build_f1_and_auroc_df(raw_results_df, sae_info)
                 results_by_layer[layer].append((auroc_results_df, sae_info))
             pbar.update(1)
     return results_by_layer
