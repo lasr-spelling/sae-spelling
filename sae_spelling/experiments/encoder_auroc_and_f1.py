@@ -194,7 +194,7 @@ def run_encoder_auroc_and_f1_experiments(
             results_by_layer[layer] = []
             sae_infos = get_gemmascope_saes_info(layer)
             for sae_info in sae_infos:
-                if skip_1m_saes and sae_info.l0 == 1_000_000:
+                if skip_1m_saes and sae_info.width == 1_000_000:
                     continue
                 raw_results_path = (
                     task_output_dir
