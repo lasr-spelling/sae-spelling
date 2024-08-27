@@ -272,7 +272,7 @@ def run_k_sparse_probing_experiments(
     sae_post_act: bool = True,
     force: bool = False,
     skip_1m_saes: bool = False,
-) -> dict[int, list[tuple[pd.DataFrame, pd.DataFrame, SaeInfo]]]:
+) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     output_dir = Path(output_dir)
 
     # TODO: handle more tasks for this evaluation
@@ -282,9 +282,7 @@ def run_k_sparse_probing_experiments(
     task_output_dir = output_dir / task
     task_output_dir.mkdir(parents=True, exist_ok=True)
 
-    results_by_layer: dict[int, list[tuple[pd.DataFrame, pd.DataFrame, SaeInfo]]] = (
-        defaultdict(list)
-    )
+    results_by_layer: dict[int, list[tuple[pd.DataFrame, SaeInfo]]] = defaultdict(list)
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
         "google/gemma-2-2b"
     )  # type: ignore
@@ -316,8 +314,6 @@ def run_k_sparse_probing_experiments(
                     auroc_results_path,
                     force=force,
                 )
-                results_by_layer[layer].append(
-                    (raw_results_df, auroc_results_df, sae_info)
-                )
+                results_by_layer[layer].append((auroc_results_df, sae_info))
             pbar.update(1)
     return results_by_layer
