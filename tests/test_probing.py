@@ -26,7 +26,7 @@ from sae_spelling.probing import (
 
 
 def test_get_exponential_decay_scheduler_decays_from_lr_to_end_lr_over_num_epochs():
-    optim = torch.optim.Adam([torch.zeros(1)], lr=0.01)
+    optim = torch.optim.Adam([torch.zeros(1)], lr=0.01)  # type: ignore
     scheduler = _get_exponential_decay_scheduler(
         optim, start_lr=0.01, end_lr=1e-5, num_steps=100
     )
@@ -176,7 +176,6 @@ def test_train_binary_probe_scores_highly_on_noisy_datasets(seed):
     correct_dir = (pos_center - neg_center).unsqueeze(0)
     # just verify that sklearn does get the right answer
     sk_cos_sim = cosine_similarity(correct_dir, torch.tensor(sk_probe.coef_), dim=1)
-    print(f"sklearn cos sim: {sk_cos_sim}")
     assert sk_cos_sim.min().item() > 0.85
     cos_sim = cosine_similarity(correct_dir, probe.weights, dim=1)
     assert cos_sim.min().item() > 0.85
