@@ -174,7 +174,7 @@ def run_encoder_auroc_and_f1_experiments(
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = False,
-) -> dict[int, list[tuple[pd.DataFrame, pd.DataFrame, SaeInfo]]]:
+) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     output_dir = Path(output_dir)
 
     # TODO: handle more tasks for this evaluation
@@ -184,9 +184,7 @@ def run_encoder_auroc_and_f1_experiments(
     task_output_dir = output_dir / task
     task_output_dir.mkdir(parents=True, exist_ok=True)
 
-    results_by_layer: dict[int, list[tuple[pd.DataFrame, pd.DataFrame, SaeInfo]]] = (
-        defaultdict(list)
-    )
+    results_by_layer: dict[int, list[tuple[pd.DataFrame, SaeInfo]]] = defaultdict(list)
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
         "google/gemma-2-2b"
     )  # type: ignore
@@ -202,16 +200,25 @@ def run_encoder_auroc_and_f1_experiments(
                     task_output_dir
                     / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_raw_results.parquet"
                 )
-                raw_results_df = load_df_or_run(
-                    lambda: load_and_run_eval_probe_and_top_sae_raw_scores(
-                        sae_info, tokenizer
-                    ),
-                    raw_results_path,
+                auroc_results_path = (
+                    task_output_dir
+                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_auroc_f1.parquet"
+                )
+
+                def get_raw_results_df():
+                    return load_df_or_run(
+                        lambda: load_and_run_eval_probe_and_top_sae_raw_scores(
+                            sae_info, tokenizer
+                        ),
+                        raw_results_path,
+                        force=force,
+                    )
+
+                auroc_results_df = load_df_or_run(
+                    lambda: build_f1_and_auroc_df(get_raw_results_df(), sae_info),
+                    auroc_results_path,
                     force=force,
                 )
-                auroc_results_df = build_f1_and_auroc_df(raw_results_df, sae_info)
-                results_by_layer[layer].append(
-                    (raw_results_df, auroc_results_df, sae_info)
-                )
+                results_by_layer[layer].append((auroc_results_df, sae_info))
             pbar.update(1)
     return results_by_layer

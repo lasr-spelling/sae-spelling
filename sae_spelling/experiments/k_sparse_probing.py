@@ -316,14 +316,25 @@ def run_k_sparse_probing_experiments(
                     task_output_dir
                     / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_post_act_{sae_post_act}_raw_results.parquet"
                 )
-                raw_results_df = load_df_or_run(
-                    lambda: load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
-                        sae_info, tokenizer, sae_post_act
-                    ),
-                    raw_results_path,
+                auroc_results_path = (
+                    task_output_dir
+                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_post_act_{sae_post_act}_auroc_f1.parquet"
+                )
+
+                def get_raw_results_df():
+                    return load_df_or_run(
+                        lambda: load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
+                            sae_info, tokenizer, sae_post_act
+                        ),
+                        raw_results_path,
+                        force=force,
+                    )
+
+                auroc_results_df = load_df_or_run(
+                    lambda: build_f1_and_auroc_df(get_raw_results_df(), sae_info),
+                    auroc_results_path,
                     force=force,
                 )
-                auroc_results_df = build_f1_and_auroc_df(raw_results_df, sae_info)
                 results_by_layer[layer].append((auroc_results_df, sae_info))
             pbar.update(1)
     return results_by_layer
