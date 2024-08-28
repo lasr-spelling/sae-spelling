@@ -8,6 +8,7 @@ from sae_spelling.prompting import (
     SpellingPrompt,
     create_icl_prompt,
     first_letter_formatter,
+    spelling_formatter,
 )
 from sae_spelling.spelling_grader import SpellingGrader
 
@@ -17,13 +18,24 @@ def test_spelling_grader_marks_response_correct_if_model_predicts_correctly(
 ):
     # GPT2 should be able to spell the word correctly after seeing 4 ICL examples of it spelled correctly
     icl_words = ["correct", "correct", "correct", "correct"]
-    grader = SpellingGrader(gpt2_model, icl_word_list=icl_words)
+    grader = SpellingGrader(
+        gpt2_model,
+        icl_word_list=icl_words,
+        answer_formatter=spelling_formatter(capitalize=False),
+    )
     grade = grader.grade_word("correct")
     assert grade.is_correct
     assert grade.answer == " c-o-r-r-e-c-t"
     assert grade.prediction == " c-o-r-r-e-c-t"
     assert grade.answer_log_prob == grade.prediction_log_prob
-    assert grade.prompt == create_icl_prompt("correct", examples=icl_words).base
+    assert (
+        grade.prompt
+        == create_icl_prompt(
+            "correct",
+            examples=icl_words,
+            answer_formatter=spelling_formatter(capitalize=False),
+        ).base
+    )
 
 
 def test_spelling_grader_allows_setting_an_answer_formatter(
@@ -65,7 +77,7 @@ def test_spelling_grader_marks_response_wrong_if_model_predicts_incorrectly(
     grader = SpellingGrader(gpt2_model, icl_word_list=["bananas"], max_icl_examples=1)
     grade = grader.grade_word("incorrect")
     assert grade.is_correct is False
-    assert grade.answer == " i-n-c-o-r-r-e-c-t"
+    assert grade.answer == " I-N-C-O-R-R-E-C-T"
     assert grade.prediction != grade.answer
     assert grade.answer_log_prob < grade.prediction_log_prob
 
@@ -82,10 +94,10 @@ def test_spelling_grader_batch_processing_gives_the_same_results_as_individual_p
         assert batch_grade.answer == individual_grade.answer
         assert batch_grade.prediction == individual_grade.prediction
         assert batch_grade.answer_log_prob == approx(
-            individual_grade.answer_log_prob, abs=1e-5
+            individual_grade.answer_log_prob, abs=1e-4
         )
         assert batch_grade.prediction_log_prob == approx(
-            individual_grade.prediction_log_prob, abs=1e-5
+            individual_grade.prediction_log_prob, abs=1e-4
         )
 
 

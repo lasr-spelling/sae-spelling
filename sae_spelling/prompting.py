@@ -26,7 +26,7 @@ def spelling(
     word: str,
     separator: str = "-",
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> str:
@@ -47,7 +47,7 @@ def spelling(
 def first_letter(
     word: str,
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> str:
@@ -69,7 +69,7 @@ def first_letter(
 def last_letter(
     word: str,
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> str:
@@ -109,7 +109,7 @@ def letter_from_start(
     word: str,
     index: int,
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> str:
@@ -135,7 +135,7 @@ def letter_from_end(
     word: str,
     index: int,
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> str:
@@ -166,7 +166,7 @@ Formatter = Callable[[str], str]
 def spelling_formatter(
     separator: str = "-",
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> Formatter:
@@ -182,7 +182,7 @@ def spelling_formatter(
 
 def first_letter_formatter(
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> Formatter:
@@ -197,7 +197,7 @@ def first_letter_formatter(
 
 def last_letter_formatter(
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> Formatter:
@@ -226,7 +226,7 @@ def is_present_formatter(
 def letter_from_start_formatter(
     index,
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> Formatter:
@@ -243,7 +243,7 @@ def letter_from_start_formatter(
 def letter_from_end_formatter(
     index,
     prefix: str = " ",
-    capitalize: bool = False,
+    capitalize: bool = True,
     ignore_leading_space: bool = True,
     ignore_non_alpha_chars: bool = True,
 ) -> Formatter:

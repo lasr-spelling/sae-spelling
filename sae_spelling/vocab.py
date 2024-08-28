@@ -13,7 +13,7 @@ ALL_ALPHA_LETTERS = LETTERS + LETTERS_UPPER
 def get_tokens(
     tokenizer: PreTrainedTokenizerFast,
     filter: Callable[[str], bool] = lambda _token: True,
-    replace_special_chars: bool = False,
+    replace_special_chars: bool = True,
 ) -> list[str]:
     result = []
     for token in tokenizer.vocab.keys():
@@ -26,7 +26,7 @@ def get_tokens(
 def get_alpha_tokens(
     tokenizer: PreTrainedTokenizerFast,
     allow_leading_space: bool = True,
-    replace_special_chars: bool = False,
+    replace_special_chars: bool = True,
 ) -> list[str]:
     def filter_alpha(token: str) -> bool:
         if allow_leading_space and token.startswith(" "):
@@ -43,7 +43,7 @@ def get_alpha_tokens(
 def get_common_word_tokens(
     tokenizer: PreTrainedTokenizerFast,
     only_start_of_word: bool = True,
-    replace_special_chars: bool = False,
+    replace_special_chars: bool = True,
     threshold: int = 10,
 ) -> list[str]:
     common_words = set(get_common_words(threshold=threshold).keys())
