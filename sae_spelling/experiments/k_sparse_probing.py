@@ -60,7 +60,7 @@ def train_sparse_multi_probe(
     l1_decay: float = 0.01,  # l1 regularization strength
     num_probes: int | None = None,  # inferred from y_train if None
     batch_size: int = 4096,
-    num_epochs: int = 100,
+    num_epochs: int = 50,
     lr: float = 0.01,
     end_lr: float = 1e-5,
     l2_decay: float = 1e-6,
@@ -120,7 +120,7 @@ def train_k_sparse_probes(
             sae_feat_acts.to(sae.device),
             sparse_train_y.to(sae.device),
             l1_decay=0.01,
-            num_epochs=100,
+            num_epochs=50,
             device=sae.device,
         )
         .float()
