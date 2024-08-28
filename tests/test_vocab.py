@@ -24,19 +24,25 @@ def test_get_tokens_returns_all_tokens_by_default(
     assert len(tokens) == len(gpt2_tokenizer.vocab)
 
 
-def test_get_tokens_keeps_special_chars_by_default(
+def test_get_tokens_can_keep_special_chars(
     gpt2_tokenizer: GPT2TokenizerFast,
 ):
-    tokens = get_tokens(gpt2_tokenizer)
+    tokens = get_tokens(gpt2_tokenizer, replace_special_chars=False)
     assert not any(token.startswith(" ") for token in tokens)
     assert any(token.startswith("_") for token in tokens)
 
 
-def test_get_tokens_can_filter_returned_tokens(gpt2_tokenizer: GPT2TokenizerFast):
+def test_get_tokens_replaces_special_chars_by_default(
+    gpt2_tokenizer: GPT2TokenizerFast,
+):
+    tokens = get_tokens(gpt2_tokenizer)
+    assert any(token.startswith(" ") for token in tokens)
+
+
+def test_get_tokens_filter_returned_tokens(gpt2_tokenizer: GPT2TokenizerFast):
     tokens = get_tokens(
         gpt2_tokenizer,
         lambda token: token.isalpha() and token.isupper(),
-        replace_special_chars=True,
     )
     assert all(token.isalpha() and token.isupper() for token in tokens)
 
