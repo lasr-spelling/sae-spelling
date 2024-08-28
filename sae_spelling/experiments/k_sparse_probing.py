@@ -263,7 +263,6 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
             f1 = metrics.f1_score(y, pred_sae > 0.0)
             recall = metrics.recall_score(y, pred_sae > 0.0)
             precision = metrics.precision_score(y, pred_sae > 0.0)
-            f1_half = metrics.f1_score(y, pred_sae > 0.5)
             auc_info[f"auc_sparse_sae_{k}"] = auc_sae
             best_f1_bias_sae, f1_sae_best = find_optimal_f1_threshold(y, pred_sae)
             recall_sae_best = metrics.recall_score(y, pred_sae > best_f1_bias_sae)
@@ -273,7 +272,6 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
             auc_info[f"recall_sparse_sae_{k}_best"] = recall_sae_best
             auc_info[f"precision_sparse_sae_{k}"] = precision
             auc_info[f"precision_sparse_sae_{k}_best"] = precision_sae_best
-            auc_info[f"f1_sparse_sae_{k}_half"] = f1_half
             auc_info[f"f1_sparse_sae_{k}_best"] = f1_sae_best
             auc_info[f"bias_f1_sparse_sae_{k}_best"] = best_f1_bias_sae
             auc_info[f"sparse_sae_k_{k}_feats"] = results_df[
@@ -281,6 +279,29 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
             ].values[0]
         aucs.append(auc_info)
     return pd.DataFrame(aucs)
+
+
+def add_feature_splits_to_auroc_f1_df(
+    df: pd.DataFrame, f1_jump_threshold: float = 0.05, ks=(1, 2, 3, 4, 5)
+) -> None:
+    """
+    If a feature has a F1 score that increases by 0.05 or more from the previous k, consider this to be feature splitting.
+    """
+    split_feats_by_letter = {}
+    for letter in LETTERS:
+        prev_best = -100
+        df_letter = df[df["letter"] == letter]
+        for k in ks:
+            k_score = df_letter[f"f1_sparse_sae_{k}"].iloc[0]  # type: ignore
+            k_feats = df_letter[f"sparse_sae_k_{k}_feats"].iloc[0].tolist()  # type: ignore
+            if k_score > prev_best + f1_jump_threshold:
+                prev_best = k_score
+                split_feats_by_letter[letter] = k_feats
+            else:
+                break
+    df["split_feats"] = df["letter"].apply(
+        lambda letter: split_feats_by_letter.get(letter, [])
+    )
 
 
 def run_k_sparse_probing_experiments(
@@ -335,6 +356,7 @@ def run_k_sparse_probing_experiments(
                     auroc_results_path,
                     force=force,
                 )
+                add_feature_splits_to_auroc_f1_df(auroc_results_df)
                 results_by_layer[layer].append((auroc_results_df, sae_info))
             pbar.update(1)
     return results_by_layer
