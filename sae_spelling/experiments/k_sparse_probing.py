@@ -282,10 +282,10 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
 
 
 def add_feature_splits_to_auroc_f1_df(
-    df: pd.DataFrame, f1_jump_threshold: float = 0.05, ks=(1, 2, 3, 4, 5)
+    df: pd.DataFrame, f1_jump_threshold: float = 0.03, ks=(1, 2, 3, 4, 5)
 ) -> None:
     """
-    If a feature has a F1 score that increases by 0.05 or more from the previous k, consider this to be feature splitting.
+    If a k-sparse probe has a F1 score that increases by `f1_jump_threshold` or more from the previous k-1, consider this to be feature splitting.
     """
     split_feats_by_letter = {}
     for letter in LETTERS:
@@ -302,6 +302,7 @@ def add_feature_splits_to_auroc_f1_df(
     df["split_feats"] = df["letter"].apply(
         lambda letter: split_feats_by_letter.get(letter, [])
     )
+    df["num_split_features"] = df["split_feats"].apply(len) - 1
 
 
 def run_k_sparse_probing_experiments(
@@ -311,6 +312,7 @@ def run_k_sparse_probing_experiments(
     sae_post_act: bool = True,
     force: bool = False,
     skip_1m_saes: bool = False,
+    f1_jump_threshold: float = 0.03,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     output_dir = Path(output_dir)
 
@@ -356,7 +358,7 @@ def run_k_sparse_probing_experiments(
                     auroc_results_path,
                     force=force,
                 )
-                add_feature_splits_to_auroc_f1_df(auroc_results_df)
+                add_feature_splits_to_auroc_f1_df(auroc_results_df, f1_jump_threshold)
                 results_by_layer[layer].append((auroc_results_df, sae_info))
             pbar.update(1)
     return results_by_layer
