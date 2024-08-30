@@ -175,3 +175,17 @@ def load_df_or_run(fn: Callable[[], pd.DataFrame], path: Path, force: bool = Fal
         print(f"{path} exists, loading from disk")
         df = pd.read_parquet(path)
     return df
+
+
+def humanify_sae_width(width: int) -> str:
+    """
+    A helper to convert SAE width to a nicer human-readable string.
+    """
+    if width == 16_000:
+        return "16k"
+    elif width == 65_000:
+        return "65k"
+    elif width == 1_000_000:
+        return "1m"
+    else:
+        raise ValueError(f"Unknown width: {width}")
