@@ -3,17 +3,21 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
+from matplotlib import pyplot as plt
 from sae_lens import SAE
 from sklearn import metrics
 from tqdm.autonotebook import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
+from tueplots import axes, bundles
 
 from sae_spelling.experiments.common import (
     EXPERIMENTS_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
     get_task_dir,
+    humanify_sae_width,
     load_df_or_run,
     load_gemmascope_sae,
     load_probe,
@@ -22,7 +26,7 @@ from sae_spelling.experiments.common import (
 from sae_spelling.probing import LinearProbe
 from sae_spelling.vocab import LETTERS
 
-EXPERIMENT_NAME = "encoder_auroc_and_f1"
+AUROC_F1_EXPERIMENT_NAME = "encoder_auroc_and_f1"
 EPS = 1e-8
 
 
@@ -170,9 +174,111 @@ def load_and_run_eval_probe_and_top_sae_raw_scores(
     return df
 
 
+def _consolidate_results_df(
+    results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+) -> pd.DataFrame:
+    auroc_f1_dfs = []
+    for layer, result in results.items():
+        for auroc_f1_df, sae_info in result:
+            auroc_f1_df["layer"] = layer
+            auroc_f1_dfs.append(auroc_f1_df)
+    df = pd.concat(auroc_f1_dfs)
+    df["sae_width_str"] = df["sae_width"].map(humanify_sae_width)
+    return df
+
+
+def plot_f1_vs_l0(
+    results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+    experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
+    task: str = "first_letter",
+):
+    task_output_dir = get_task_dir(experiment_dir, task=task)
+    df = _consolidate_results_df(results)
+
+    sns.set_theme()
+    plt.rcParams.update({"figure.dpi": 150})
+    with plt.rc_context({**bundles.neurips2021(), **axes.lines()}):
+        plt.figure(figsize=(3.75, 2.5))
+        sns.scatterplot(
+            df[["layer", "sae_l0", "sae_width_str", "f1_sae_top_0"]]
+            .groupby(["layer", "sae_width_str", "sae_l0"])
+            .mean()
+            .reset_index(),
+            x="sae_l0",
+            y="f1_sae_top_0",
+            hue="sae_width_str",
+            s=15,
+            rasterized=True,
+        )
+        plt.legend(title="SAE width", title_fontsize="small")
+        plt.title("First-letter SAE F1 score vs L0")
+        plt.xlabel("L0")
+        plt.ylabel("Mean F1")
+        plt.tight_layout()
+        plt.savefig(task_output_dir / "f1_vs_l0.pdf")
+        plt.show()
+
+
+def plot_f1_vs_layer(
+    results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+    experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
+    task: str = "first_letter",
+):
+    task_output_dir = get_task_dir(experiment_dir, task=task)
+    df = _consolidate_results_df(results)
+
+    grouped_df = (
+        df[["layer", "sae_l0", "sae_width_str", "f1_sae_top_0"]]
+        .groupby(["layer", "sae_width_str", "sae_l0"])
+        .mean()
+        .reset_index()
+    )
+    probe_df = df[["layer", "f1_probe"]].groupby(["layer"]).mean().reset_index()
+
+    sns.set_theme()
+    plt.rcParams.update({"figure.dpi": 150})
+    with plt.rc_context({**bundles.neurips2021(), **axes.lines()}):
+        plt.figure(figsize=(3.75, 2.5))
+        sns.swarmplot(
+            data=grouped_df,
+            x="layer",
+            y="f1_sae_top_0",
+            hue="sae_width_str",
+            size=2,
+        )
+
+        # Add the line plot for probe_df
+        sns.lineplot(
+            data=probe_df,
+            x="layer",
+            y="f1_probe",
+            color="gray",
+            linewidth=1,
+            marker="o",
+            markersize=3,
+            label="Probe",
+        )
+
+        # Customize the plot
+        plt.title("First-letter SAE F1 score vs Layer")
+        plt.xlabel("Layer")
+        plt.ylabel("Mean F1")
+        plt.legend(
+            title="SAE width",
+            bbox_to_anchor=(1.05, 1),
+            loc="upper left",
+            title_fontsize="small",
+        )
+
+        # Adjust layout to prevent clipping of the legend
+        plt.tight_layout()
+        plt.savefig(task_output_dir / "f1_vs_layer.pdf")
+        plt.show()
+
+
 def run_encoder_auroc_and_f1_experiments(
     layers: list[int],
-    experiment_dir: Path | str = EXPERIMENTS_DIR / EXPERIMENT_NAME,
+    experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = False,
