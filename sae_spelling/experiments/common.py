@@ -188,6 +188,9 @@ def load_experiment_df(
     experiment_name: str,
     path: Path,
 ) -> pd.DataFrame:
+    """
+    Helper to load a DF or error if it doesn't exist.
+    """
     if not path.exists():
         raise FileNotFoundError(
             f"{path} does not exist. Run the {experiment_name} experiment first."
