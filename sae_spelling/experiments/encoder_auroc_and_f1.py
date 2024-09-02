@@ -47,7 +47,10 @@ def eval_probe_and_top_sae_raw_scores(
         .indices.cpu()
     )
     probe = probe.cpu()
-    effective_bias = sae.b_enc - sae.threshold
+    effective_bias = sae.b_enc
+    # jumprelu SAEs have a separate threshold which must be passed before a feature can fire
+    if hasattr(sae, "threshold"):
+        effective_bias = sae.b_enc - sae.threshold
     top_feat_weights = [sae.W_enc.T[top_sae_feats[:, i]].cpu() for i in range(topk)]
     top_feat_biases = [effective_bias[top_sae_feats[:, i]].cpu() for i in range(topk)]
 
