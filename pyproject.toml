@@ -14,6 +14,9 @@ torch = [
     # use 2.2.2 on mac to support old intel macs, but allow colab to not downgrade torch
     { platform = "!=linux", version = "2.2.2" },
 ]
+tueplots = "^0.0.15"
+matplotlib = "^3.9.2"
+seaborn = "^0.13.2"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.5.1"

@@ -167,7 +167,39 @@ def get_gemmascope_saes_info(layer: int | None = None) -> list[SaeInfo]:
     return saes
 
 
-def load_df_or_run(fn: Callable[[], pd.DataFrame], path: Path, force: bool = False):
+def get_task_dir(
+    experiment_dir: str | Path,
+    task: str = "first_letter",
+) -> Path:
+    """
+    Helper to create a directory for a specific task within an experiment directory.
+    """
+    # TODO: support more tasks
+    if task != "first_letter":
+        raise ValueError(f"Unsupported task: {task}")
+
+    experiment_dir = Path(experiment_dir)
+    task_output_dir = experiment_dir / task
+    task_output_dir.mkdir(parents=True, exist_ok=True)
+    return task_output_dir
+
+
+def load_experiment_df(
+    experiment_name: str,
+    path: Path,
+) -> pd.DataFrame:
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} does not exist. Run the {experiment_name} experiment first."
+        )
+    return pd.read_parquet(path)
+
+
+def load_df_or_run(
+    fn: Callable[[], pd.DataFrame],
+    path: Path,
+    force: bool = False,
+) -> pd.DataFrame:
     if force or not path.exists():
         df = fn()
         df.to_parquet(path, index=False)

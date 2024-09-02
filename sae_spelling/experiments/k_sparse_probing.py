@@ -2,8 +2,10 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
 from sae_lens import SAE
 from sklearn import metrics
@@ -11,11 +13,14 @@ from sklearn.linear_model import LogisticRegression
 from torch import nn
 from tqdm.autonotebook import tqdm
 from transformers import AutoTokenizer, PreTrainedTokenizerFast
+from tueplots import axes, bundles
 
 from sae_spelling.experiments.common import (
     EXPERIMENTS_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
+    get_task_dir,
+    humanify_sae_width,
     load_df_or_run,
     load_gemmascope_sae,
     load_probe,
@@ -27,7 +32,7 @@ from sae_spelling.util import DEFAULT_DEVICE
 from sae_spelling.vocab import LETTERS
 
 KS = (1, 2, 3, 4, 5, 10, 20, 50)
-EXPERIMENT_NAME = "k_sparse_probing"
+SPARSE_PROBING_EXPERIMENT_NAME = "k_sparse_probing"
 
 
 class KSparseProbe(nn.Module):
@@ -305,23 +310,56 @@ def add_feature_splits_to_auroc_f1_df(
     df["num_split_features"] = df["split_feats"].apply(len) - 1
 
 
+def plot_feature_splits_vs_l0(
+    k_sparse_results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+    experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
+    task: str = "first_letter",
+):
+    task_output_dir = get_task_dir(experiment_dir, task=task)
+
+    auroc_f1_dfs = []
+    for layer, result in k_sparse_results.items():
+        for auroc_f1_df, sae_info in result:
+            auroc_f1_df["layer"] = layer
+            auroc_f1_dfs.append(auroc_f1_df)
+    df = pd.concat(auroc_f1_dfs)
+
+    df["sae_width_str"] = df["sae_width"].map(humanify_sae_width)
+
+    sns.set_theme()
+    plt.rcParams.update({"figure.dpi": 150})
+    with plt.rc_context({**bundles.neurips2021(), **axes.lines()}):
+        plt.figure(figsize=(3.75, 2.5))
+        sns.scatterplot(
+            df[["layer", "sae_l0", "sae_width_str", "num_split_features"]]
+            .groupby(["layer", "sae_width_str", "sae_l0"])
+            .mean()
+            .reset_index(),
+            x="sae_l0",
+            y="num_split_features",
+            hue="sae_width_str",
+            s=15,
+            rasterized=True,
+        )
+        plt.legend(title="SAE width", title_fontsize="small")
+        plt.title("Mean feature splits per first-letter vs L0")
+        plt.xlabel("L0")
+        plt.ylabel("Num feature splits")
+        plt.tight_layout()
+        plt.savefig(task_output_dir / "feature_splitting_vs_l0.pdf")
+        plt.show()
+
+
 def run_k_sparse_probing_experiments(
     layers: list[int],
-    output_dir: Path | str = EXPERIMENTS_DIR / EXPERIMENT_NAME,
+    experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
     task: str = "first_letter",
     sae_post_act: bool = True,
     force: bool = False,
     skip_1m_saes: bool = False,
     f1_jump_threshold: float = 0.03,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
-    output_dir = Path(output_dir)
-
-    # TODO: handle more tasks for this evaluation
-    if task != "first_letter":
-        raise ValueError(f"Unsupported task: {task}")
-
-    task_output_dir = output_dir / task
-    task_output_dir.mkdir(parents=True, exist_ok=True)
+    task_output_dir = get_task_dir(experiment_dir, task=task)
 
     results_by_layer: dict[int, list[tuple[pd.DataFrame, SaeInfo]]] = defaultdict(list)
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(

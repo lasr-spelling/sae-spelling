@@ -13,6 +13,7 @@ from sae_spelling.experiments.common import (
     EXPERIMENTS_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
+    get_task_dir,
     load_df_or_run,
     load_gemmascope_sae,
     load_probe,
@@ -171,19 +172,12 @@ def load_and_run_eval_probe_and_top_sae_raw_scores(
 
 def run_encoder_auroc_and_f1_experiments(
     layers: list[int],
-    output_dir: Path | str = EXPERIMENTS_DIR / EXPERIMENT_NAME,
+    experiment_dir: Path | str = EXPERIMENTS_DIR / EXPERIMENT_NAME,
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = False,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
-    output_dir = Path(output_dir)
-
-    # TODO: handle more tasks for this evaluation
-    if task != "first_letter":
-        raise ValueError(f"Unsupported task: {task}")
-
-    task_output_dir = output_dir / task
-    task_output_dir.mkdir(parents=True, exist_ok=True)
+    task_output_dir = get_task_dir(experiment_dir, task=task)
 
     results_by_layer: dict[int, list[tuple[pd.DataFrame, SaeInfo]]] = defaultdict(list)
     tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
