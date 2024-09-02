@@ -1,7 +1,7 @@
 import os
 from dataclasses import dataclass
 from math import exp, log
-from typing import Callable
+from typing import Callable, Literal
 
 import numpy as np
 import pandas as pd
@@ -37,6 +37,10 @@ class LinearProbe(nn.Module):
     def weights(self):
         return self.fc.weight
 
+    @property
+    def biases(self):
+        return self.fc.bias
+
 
 def _calc_pos_weights(y: torch.Tensor) -> torch.Tensor:
     num_pos_samples = y.sum(dim=0)
@@ -54,6 +58,9 @@ def train_multi_probe(
     end_lr: float = 1e-5,
     weight_decay: float = 1e-6,
     show_progress: bool = True,
+    optimizer: Literal["Adam", "SGD", "AdamW"] = "Adam",
+    extra_loss_fn: Callable[[LinearProbe, torch.Tensor, torch.Tensor], torch.Tensor]
+    | None = None,
     verbose: bool = False,
     device: torch.device = DEFAULT_DEVICE,
 ) -> LinearProbe:
@@ -89,6 +96,8 @@ def train_multi_probe(
         end_lr=end_lr,
         weight_decay=weight_decay,
         show_progress=show_progress,
+        optimizer_name=optimizer,
+        extra_loss_fn=extra_loss_fn,
         verbose=verbose,
     )
 
@@ -104,6 +113,9 @@ def train_binary_probe(
     end_lr: float = 1e-5,
     weight_decay: float = 1e-6,
     show_progress: bool = True,
+    optimizer: Literal["Adam", "SGD", "AdamW"] = "Adam",
+    extra_loss_fn: Callable[[LinearProbe, torch.Tensor, torch.Tensor], torch.Tensor]
+    | None = None,
     verbose: bool = False,
     device: torch.device = DEFAULT_DEVICE,
 ) -> LinearProbe:
@@ -130,13 +142,18 @@ def train_binary_probe(
         end_lr=end_lr,
         weight_decay=weight_decay,
         show_progress=show_progress,
+        optimizer=optimizer,
+        extra_loss_fn=extra_loss_fn,
         verbose=verbose,
         device=device,
     )
 
 
 def _get_exponential_decay_scheduler(
-    optimizer: optim.Optimizer, start_lr: float, end_lr: float, num_steps: int
+    optimizer: optim.Optimizer,  # type: ignore
+    start_lr: float,
+    end_lr: float,
+    num_steps: int,
 ) -> optim.lr_scheduler.ExponentialLR:
     gamma = exp(log(end_lr / start_lr) / num_steps)
     return optim.lr_scheduler.ExponentialLR(optimizer, gamma=gamma)
@@ -151,10 +168,20 @@ def _run_probe_training(
     end_lr: float,
     weight_decay: float,
     show_progress: bool,
+    optimizer_name: Literal["Adam", "SGD", "AdamW"],
+    extra_loss_fn: Callable[[LinearProbe, torch.Tensor, torch.Tensor], torch.Tensor]
+    | None,
     verbose: bool,
 ) -> None:
     probe.train()
-    optimizer = optim.Adam(probe.parameters(), lr=lr, weight_decay=weight_decay)
+    if optimizer_name == "Adam":
+        optimizer = optim.Adam(probe.parameters(), lr=lr, weight_decay=weight_decay)  # type: ignore
+    elif optimizer_name == "SGD":
+        optimizer = optim.SGD(probe.parameters(), lr=lr, weight_decay=weight_decay)  # type: ignore
+    elif optimizer_name == "AdamW":
+        optimizer = optim.AdamW(probe.parameters(), lr=lr, weight_decay=weight_decay)  # type: ignore
+    else:
+        raise ValueError(f"Unknown optimizer: {optimizer_name}")
     scheduler = _get_exponential_decay_scheduler(
         optimizer, start_lr=lr, end_lr=end_lr, num_steps=num_epochs
     )
@@ -173,6 +200,8 @@ def _run_probe_training(
             optimizer.zero_grad()
             logits = probe(batch_embeddings)
             loss = loss_fn(logits, batch_labels)
+            if extra_loss_fn is not None:
+                loss += extra_loss_fn(probe, batch_embeddings, batch_labels)
             loss.backward()
             optimizer.step()
 
