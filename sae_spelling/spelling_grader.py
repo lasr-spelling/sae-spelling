@@ -23,8 +23,11 @@ class SpellingGrade:
     answer_log_prob: float
     prediction_log_prob: float
 
+
 HookFn = Callable[[torch.Tensor, str], torch.Tensor]
 Hooks = List[Tuple[Union[str, Callable], HookFn]]
+
+
 @dataclass
 class SpellingGrader:
     model: HookedTransformer
