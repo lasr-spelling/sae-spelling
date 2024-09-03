@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import cast
+from typing import cast, List, Tuple, Union, Callable
 
 import torch
 from transformer_lens import HookedTransformer
@@ -23,7 +23,8 @@ class SpellingGrade:
     answer_log_prob: float
     prediction_log_prob: float
 
-
+HookFn = Callable[[torch.Tensor, str], torch.Tensor]
+Hooks = List[Tuple[Union[str, Callable], HookFn]]
 @dataclass
 class SpellingGrader:
     model: HookedTransformer
@@ -38,7 +39,11 @@ class SpellingGrader:
         return self.grade_words([word])[0]
 
     def grade_words(
-        self, words: list[str], batch_size: int = 1, show_progress: bool = True
+        self,
+        words: list[str],
+        batch_size: int = 1,
+        show_progress: bool = True,
+        fwd_hooks: Hooks | None = None,
     ) -> list[SpellingGrade]:
         prompts = [
             create_icl_prompt(
@@ -55,7 +60,11 @@ class SpellingGrader:
         grades = []
         for batch in batchify(prompts, batch_size, show_progress=show_progress):
             inputs = [prompt.base + prompt.answer for prompt in batch]
-            res = self.model(inputs)
+            if fwd_hooks is not None:
+                with self.model.hooks(fwd_hooks=fwd_hooks):
+                    res = self.model(inputs)
+            else:
+                res = self.model(inputs)
             for i, prompt in enumerate(batch):
                 grades.append(self._grade_response(prompt, res[i]))
         return grades

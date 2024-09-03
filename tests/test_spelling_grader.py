@@ -3,6 +3,7 @@ import math
 import torch
 from pytest import approx
 from transformer_lens import HookedTransformer
+from typing import Callable, List, Tuple
 
 from sae_spelling.prompting import (
     SpellingPrompt,
@@ -10,7 +11,47 @@ from sae_spelling.prompting import (
     first_letter_formatter,
     spelling_formatter,
 )
-from sae_spelling.spelling_grader import SpellingGrader
+from sae_spelling.spelling_grader import SpellingGrader, Hooks
+
+
+def test_spelling_grader_with_fwd_hooks(gpt2_model: HookedTransformer):
+    HOOK_POINT = "blocks.0.hook_resid_post"
+
+    template = "{word} has the first letter:"
+    formatter = first_letter_formatter(capitalize=True)
+
+    icl_words = ["stops", "idov", "Atle", "daly"]
+    prompt_to_cache = create_icl_prompt(
+        "Bon",
+        examples=icl_words,
+        base_template=template,
+        answer_formatter=formatter,
+        shuffle_examples=False,
+    )
+
+    _, cache = gpt2_model.run_with_cache(prompt_to_cache.base, names_filter=HOOK_POINT)
+    cached_act = cache[HOOK_POINT][0, -6, :]
+
+    def hook_fn(act: torch.Tensor, hook: str) -> torch.Tensor:
+        act[0, -7, :] = cached_act
+        return act
+
+    hooks: Hooks = [(HOOK_POINT, hook_fn)]
+
+    grader = SpellingGrader(
+        gpt2_model,
+        icl_word_list=icl_words,
+        base_template=template,
+        answer_formatter=formatter,
+        shuffle_examples=False,
+    )
+
+    grade_base = grader.grade_words(["peg"])[0]
+    grade_edit = grader.grade_words(["peg"], fwd_hooks=hooks)[0]
+
+    assert grade_base.prediction == " P"
+    assert grade_edit.prediction == " B"
+    assert grade_edit.answer == " P"
 
 
 def test_spelling_grader_marks_response_correct_if_model_predicts_correctly(
