@@ -1,9 +1,9 @@
 import math
+import random
 
 import torch
 from pytest import approx
 from transformer_lens import HookedTransformer
-from typing import Callable, List, Tuple
 
 from sae_spelling.prompting import (
     SpellingPrompt,
@@ -11,10 +11,10 @@ from sae_spelling.prompting import (
     first_letter_formatter,
     spelling_formatter,
 )
-from sae_spelling.spelling_grader import SpellingGrader, Hooks
+from sae_spelling.spelling_grader import Hooks, SpellingGrader
 
 
-def test_spelling_grader_with_fwd_hooks(gpt2_model: HookedTransformer):
+def test_spelling_grader_edits_with_fwd_hooks(gpt2_model: HookedTransformer):
     HOOK_POINT = "blocks.0.hook_resid_post"
 
     template = "{word} has the first letter:"
@@ -30,13 +30,15 @@ def test_spelling_grader_with_fwd_hooks(gpt2_model: HookedTransformer):
     )
 
     _, cache = gpt2_model.run_with_cache(prompt_to_cache.base, names_filter=HOOK_POINT)
-    cached_act = cache[HOOK_POINT][0, -6, :]
+    cached_act = cache[HOOK_POINT][:, -6, :]  # cache the word position
 
-    def hook_fn(act: torch.Tensor, hook: str) -> torch.Tensor:
-        act[0, -7, :] = cached_act
-        return act
+    def hook_generator(word_indices: list[int]) -> Hooks:
+        def hook_fn(act: torch.Tensor, hook: str) -> torch.Tensor:
+            _ = hook
+            act[:, word_indices, :] = cached_act
+            return act
 
-    hooks: Hooks = [(HOOK_POINT, hook_fn)]
+        return [(HOOK_POINT, hook_fn)]
 
     grader = SpellingGrader(
         gpt2_model,
@@ -44,14 +46,77 @@ def test_spelling_grader_with_fwd_hooks(gpt2_model: HookedTransformer):
         base_template=template,
         answer_formatter=formatter,
         shuffle_examples=False,
+        hook_generator=hook_generator,
     )
 
-    grade_base = grader.grade_words(["peg"])[0]
-    grade_edit = grader.grade_words(["peg"], fwd_hooks=hooks)[0]
+    grade_edit = grader.grade_words(["peg", "role"], batch_size=2, use_hooks=True)
+    grade_base = grader.grade_words(["peg", "role"], batch_size=2, use_hooks=False)
 
-    assert grade_base.prediction == " P"
-    assert grade_edit.prediction == " B"
-    assert grade_edit.answer == " P"
+    assert grade_edit[0].prediction == " B"
+    assert grade_edit[0].answer == " P"
+    assert grade_base[0].prediction == " P"
+
+    assert grade_edit[1].prediction == " B"
+    assert grade_edit[1].answer == " R"
+    assert grade_base[1].prediction == " R"
+
+
+def test_spelling_grader_with_fwd_hooks_intervenes_correct_indices_in_batch(
+    gpt2_model: HookedTransformer,
+):
+    HOOK_POINT = "blocks.0.hook_resid_post"
+
+    word_index_store = {}
+
+    def cache_hook_generator(word_indices: list[int]) -> Hooks:
+        word_index_store["cache"] = word_indices.copy()
+
+        def hook_fn(act: torch.Tensor, hook: str) -> torch.Tensor:
+            _ = hook
+            return act
+
+        return [(HOOK_POINT, hook_fn)]
+
+    template = "{word} is spelled:"
+    formatter = spelling_formatter(capitalize=True, separator=" ")
+    icl_word_list = ["stops", "bananas", "one", "unobtainable", "two", "three"]
+    max_icl_examples = 2
+
+    words = ["peg", "role"]
+
+    random.seed(2)
+    prompts = [
+        create_icl_prompt(
+            word,
+            examples=icl_word_list,
+            base_template=template,
+            answer_formatter=formatter,
+            max_icl_examples=max_icl_examples,
+            shuffle_examples=True,
+        )
+        for word in words
+    ]
+
+    correct_word_positions = []
+    for prompt in prompts:
+        prefix_toks = gpt2_model.to_tokens(prompt.base)[0].tolist()
+        word_tok = gpt2_model.to_tokens(prompt.word, prepend_bos=False)[0].item()
+        correct_word_positions.append(prefix_toks.index(word_tok))
+
+    random.seed(2)
+    grader = SpellingGrader(
+        gpt2_model,
+        icl_word_list=icl_word_list,
+        base_template=template,
+        answer_formatter=formatter,
+        max_icl_examples=max_icl_examples,
+        shuffle_examples=True,
+        hook_generator=cache_hook_generator,
+    )
+
+    grader.grade_words(words, batch_size=2, use_hooks=True)
+
+    assert word_index_store["cache"] == correct_word_positions
 
 
 def test_spelling_grader_marks_response_correct_if_model_predicts_correctly(

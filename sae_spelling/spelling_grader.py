@@ -1,5 +1,6 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast, List, Tuple, Union, Callable
+from typing import Callable, cast
 
 import torch
 from transformer_lens import HookedTransformer
@@ -25,7 +26,8 @@ class SpellingGrade:
 
 
 HookFn = Callable[[torch.Tensor, str], torch.Tensor]
-Hooks = List[Tuple[Union[str, Callable], HookFn]]
+Hooks = list[tuple[str | Callable, HookFn]]
+HookGenerator = Callable[[list[int]], Hooks]
 
 
 @dataclass
@@ -37,6 +39,7 @@ class SpellingGrader:
     answer_formatter: Formatter = spelling_formatter()
     example_separator: str = "\n"
     shuffle_examples: bool = True
+    hook_generator: HookGenerator | None = None
 
     def grade_word(self, word: str) -> SpellingGrade:
         return self.grade_words([word])[0]
@@ -46,7 +49,7 @@ class SpellingGrader:
         words: list[str],
         batch_size: int = 1,
         show_progress: bool = True,
-        fwd_hooks: Hooks | None = None,
+        use_hooks: bool = False,
     ) -> list[SpellingGrade]:
         prompts = [
             create_icl_prompt(
@@ -63,14 +66,37 @@ class SpellingGrader:
         grades = []
         for batch in batchify(prompts, batch_size, show_progress=show_progress):
             inputs = [prompt.base + prompt.answer for prompt in batch]
-            if fwd_hooks is not None:
-                with self.model.hooks(fwd_hooks=fwd_hooks):
-                    res = self.model(inputs)
+            if use_hooks:
+                assert self.hook_generator is not None
+                res = self._run_with_hooks(inputs, batch, self.hook_generator)
             else:
                 res = self.model(inputs)
             for i, prompt in enumerate(batch):
                 grades.append(self._grade_response(prompt, res[i]))
         return grades
+
+    def _run_with_hooks(
+        self,
+        inputs: list[str],
+        batch: Sequence[SpellingPrompt],
+        hook_generator: HookGenerator,
+    ) -> torch.Tensor:
+        word_indices = []
+        for prompt in batch:
+            prefix_toks = self.model.to_tokens(prompt.base)[0]
+            last_line_tokens = self.model.to_tokens(
+                self.base_template.format(word=prompt.word), prepend_bos=False
+            )[0]
+            last_line_word_index = last_line_tokens.tolist().index(
+                self.model.to_tokens(prompt.word, prepend_bos=False)[0].item()
+            )
+            word_indices.append(
+                len(prefix_toks) - len(last_line_tokens) + last_line_word_index
+            )
+
+        hooks = hook_generator(word_indices)
+        with self.model.hooks(fwd_hooks=hooks):
+            return self.model(inputs)
 
     def _grade_response(
         self, prompt: SpellingPrompt, model_output: torch.Tensor
