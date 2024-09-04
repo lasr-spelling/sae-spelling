@@ -269,6 +269,7 @@ def create_icl_prompt(
     max_icl_examples: int | None = None,
     shuffle_examples: bool = True,
     check_contamination: bool = True,
+    max_attempts: int = 1000,
 ) -> SpellingPrompt:
     """
     Create a prompt with ICL examples in the base, optionally checking for contamination.
@@ -282,12 +283,16 @@ def create_icl_prompt(
         max_icl_examples: the maximum number of ICL examples to use. If None, all examples will be used. default is None
         shuffle_examples: whether to shuffle the examples before selecting the first `max_icl_examples`. default is True
         check_contamination: whether to check and prevent the current word from appearing in ICL examples. default is True
+        max_attempts: maximum number of attempts to avoid contamination before raising an exception. default is 1000
     """
     if max_icl_examples is None:
         max_icl_examples = len(examples)
 
+    attempts = 0
+
     if check_contamination:
         while True:
+            attempts += 1
             if shuffle_examples:
                 icl_examples = random.sample(examples, max_icl_examples)
             else:
@@ -295,6 +300,11 @@ def create_icl_prompt(
 
             if word not in icl_examples:
                 break
+
+            if attempts >= max_attempts:
+                raise ValueError(
+                    f"Could not find a non-contaminated set of examples after {max_attempts} attempts."
+                )
     else:
         if shuffle_examples:
             icl_examples = random.sample(examples, max_icl_examples)
