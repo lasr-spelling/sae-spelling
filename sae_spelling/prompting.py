@@ -268,9 +268,10 @@ def create_icl_prompt(
     answer_formatter: Formatter = spelling_formatter(),
     max_icl_examples: int | None = None,
     shuffle_examples: bool = True,
+    check_contamination: bool = True,
 ) -> SpellingPrompt:
     """
-    Create a prompt with ICL examples in the base, excluding the current word from examples.
+    Create a prompt with ICL examples in the base, optionally checking for contamination.
 
     Args:
         word: the word to be spelled
@@ -280,18 +281,25 @@ def create_icl_prompt(
         answer_formatter: a function to format the answer. default is `spelling_formatter`, which spits out a string like " c-a-t" for the word "cat"
         max_icl_examples: the maximum number of ICL examples to use. If None, all examples will be used. default is None
         shuffle_examples: whether to shuffle the examples before selecting the first `max_icl_examples`. default is True
+        check_contamination: whether to check and prevent the current word from appearing in ICL examples. default is True
     """
-    # Exclude the current word from the examples
-    icl_examples = [ex for ex in examples if ex != word]
+    if max_icl_examples is None:
+        max_icl_examples = len(examples)
 
-    if max_icl_examples is not None:
+    if check_contamination:
+        while True:
+            if shuffle_examples:
+                icl_examples = random.sample(examples, max_icl_examples)
+            else:
+                icl_examples = examples[:max_icl_examples]
+
+            if word not in icl_examples:
+                break
+    else:
         if shuffle_examples:
-            icl_examples = random.sample(icl_examples, max_icl_examples)
+            icl_examples = random.sample(examples, max_icl_examples)
         else:
-            icl_examples = icl_examples[:max_icl_examples]
-    elif shuffle_examples:
-        icl_examples = examples.copy()
-        random.shuffle(icl_examples)
+            icl_examples = examples[:max_icl_examples]
 
     icl_prompts = []
     for ex in icl_examples:
@@ -301,6 +309,7 @@ def create_icl_prompt(
 
     word_answer = answer_formatter(word)
     word_base = base_template.format(word=word)
+
     return SpellingPrompt(
         base=example_separator.join(icl_prompts) + example_separator + word_base,
         answer=word_answer,
