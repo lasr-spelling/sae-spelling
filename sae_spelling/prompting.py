@@ -270,7 +270,7 @@ def create_icl_prompt(
     shuffle_examples: bool = True,
 ) -> SpellingPrompt:
     """
-    Create a prompt with ICL examples in the base
+    Create a prompt with ICL examples in the base, excluding the current word from examples.
 
     Args:
         word: the word to be spelled
@@ -281,8 +281,8 @@ def create_icl_prompt(
         max_icl_examples: the maximum number of ICL examples to use. If None, all examples will be used. default is None
         shuffle_examples: whether to shuffle the examples before selecting the first `max_icl_examples`. default is True
     """
-    icl_prompts = []
-    icl_examples = examples
+    # Exclude the current word from the examples
+    icl_examples = [ex for ex in examples if ex != word]
 
     if max_icl_examples is not None:
         if shuffle_examples:
@@ -292,10 +292,13 @@ def create_icl_prompt(
     elif shuffle_examples:
         icl_examples = examples.copy()
         random.shuffle(icl_examples)
+
+    icl_prompts = []
     for ex in icl_examples:
         ex_answer = answer_formatter(ex)
         ex_base = base_template.format(word=ex)
         icl_prompts.append(ex_base + ex_answer)
+
     word_answer = answer_formatter(word)
     word_base = base_template.format(word=word)
     return SpellingPrompt(
