@@ -1,4 +1,3 @@
-import random
 from collections import defaultdict
 from pathlib import Path
 
@@ -8,7 +7,7 @@ import seaborn as sns
 import torch
 from sae_lens import SAE
 from tqdm.autonotebook import tqdm
-from transformer_lens import HookedTransformer
+from transformers import PreTrainedTokenizerBase
 from tueplots import axes, bundles
 
 from sae_spelling.experiments.common import (
@@ -25,18 +24,17 @@ from sae_spelling.experiments.common import (
 )
 from sae_spelling.experiments.k_sparse_probing import (
     SPARSE_PROBING_EXPERIMENT_NAME,
+    add_feature_splits_to_auroc_f1_df,
+    get_sparse_probing_auroc_f1_results_filename,
     get_sparse_probing_raw_results_filename,
 )
-from sae_spelling.feature_attribution import (
-    calculate_integrated_gradient_attribution_patching,
-)
+from sae_spelling.feature_absorption_calculator import FeatureAbsorptionCalculator
 from sae_spelling.probing import LinearProbe
 from sae_spelling.prompting import (
-    SpellingPrompt,
-    create_icl_prompt,
+    VERBOSE_FIRST_LETTER_TEMPLATE,
+    VERBOSE_FIRST_LETTER_TOKEN_POS,
     first_letter_formatter,
 )
-from sae_spelling.util import batchify
 from sae_spelling.vocab import LETTERS, LETTERS_UPPER, get_alpha_tokens
 
 FEATURE_ABSORPTION_EXPERIMENT_NAME = "feature_absorption"
@@ -48,180 +46,85 @@ ABSORPTION_PROBE_COS_THRESHOLD = 0.025
 ABSORPTION_FEATURE_DELTA_THRESHOLD = 1.0
 
 
-TEMPLATE = "{word} has the first letter:"
-TOKEN_POS = -6
-
-
-def ig_ablate(model: HookedTransformer, sae: SAE, prompt: SpellingPrompt):
-    def letter_delta_metric(pos_letter: str):
-        neg_letters = [
-            f" {letter}" for letter in LETTERS_UPPER if pos_letter[-1].upper() != letter
-        ]
-        pos_letter_tok = model.tokenizer.encode(pos_letter)[-1]  # type: ignore
-        neg_letter_toks = torch.tensor(
-            [model.tokenizer.encode(neg_letter)[-1] for neg_letter in neg_letters]  # type: ignore
-        )
-
-        def metric_fn(logits):
-            pos_logit = logits[:, -1, pos_letter_tok]
-            neg_logits = logits[:, -1, neg_letter_toks]
-            result = pos_logit - (neg_logits.sum(dim=-1) / len(neg_letters))
-            return result
-
-        return metric_fn
-
-    attrib = calculate_integrated_gradient_attribution_patching(
-        model=model,
-        input=prompt.base,
-        include_saes={sae.cfg.hook_name: sae},
-        metric_fn=letter_delta_metric(pos_letter=prompt.answer),
-        patch_indices=TOKEN_POS,
-        batch_size=6,
-        interpolation_steps=6,
-    )
-    with torch.no_grad():
-        sae_acts = (
-            attrib.sae_feature_activations[sae.cfg.hook_name][0, TOKEN_POS]
-            .float()
-            .cpu()
-            .detach()
-            .clone()
-        )
-        abl_scores = (
-            attrib.sae_feature_attributions[sae.cfg.hook_name][0, TOKEN_POS]
-            .float()
-            .cpu()
-            .detach()
-            .clone()
-        )
-        return abl_scores, sae_acts
-
-
-def enhance_df(df):
-    df["delta"] = df["top_ablation_score"].abs() - df["second_ablation_score"].abs()
-    df["is_absorption"] = (
-        (df["top_ablation_feat_probe_cos"] > ABSORPTION_PROBE_COS_THRESHOLD)
-        & (df["top_ablation_score"] < 0)
-        & (df["delta"] > ABSORPTION_FEATURE_DELTA_THRESHOLD)
+def letter_delta_metric(tokenizer: PreTrainedTokenizerBase, pos_letter: str):
+    neg_letters = [
+        f" {letter}" for letter in LETTERS_UPPER if pos_letter[-1].upper() != letter
+    ]
+    pos_letter_tok = tokenizer.encode(pos_letter)[-1]  # type: ignore
+    neg_letter_toks = torch.tensor(
+        [tokenizer.encode(neg_letter)[-1] for neg_letter in neg_letters]  # type: ignore
     )
 
+    def metric_fn(logits):
+        pos_logit = logits[:, -1, pos_letter_tok]
+        neg_logits = logits[:, -1, neg_letter_toks]
+        result = pos_logit - (neg_logits.sum(dim=-1) / len(neg_letters))
+        return result
 
-@torch.inference_mode()
-def prefilter_prompts(
-    model: HookedTransformer,
-    sae: SAE,
-    vocab: list[str],
-    tokens: list[str],
-    split_feats: list[int],
-    batch_size: int = 40,
-) -> list[SpellingPrompt]:
-    filtered_prompts: list[SpellingPrompt] = []
-    for batch_toks in batchify(tokens, batch_size=batch_size):
-        batch_prompts = [
-            create_icl_prompt(
-                tok,
-                base_template=TEMPLATE,
-                examples=vocab,
-                answer_formatter=first_letter_formatter(capitalize=True),
-                max_icl_examples=10,
-            )
-            for tok in batch_toks
-        ]
-        sae_in = model.run_with_cache([p.base for p in batch_prompts])[1][
-            sae.cfg.hook_name
-        ]
-        sae_acts = sae.encode(sae_in)
-        split_feats_active = (
-            sae_acts[:, TOKEN_POS, split_feats].sum(dim=-1).float().tolist()
-        )
-        for tok, prompt, res in zip(batch_toks, batch_prompts, split_feats_active):
-            if res < 1e-8:
-                filtered_prompts.append(prompt)
-    return filtered_prompts
-
-
-def filter_and_gen_prompts(
-    model: HookedTransformer,
-    sae: SAE,
-    likely_negs: dict[str, tuple[int, list[int], list[str]]],
-) -> dict[str, tuple[int, list[int], list[SpellingPrompt]]]:
-    results: dict[str, tuple[int, list[int], list[SpellingPrompt]]] = {}
-    vocab = get_alpha_tokens(model.tokenizer)  # type: ignore
-    for letter, (num_true_positives, split_feats, tokens) in tqdm(
-        likely_negs.items(), desc="prefiltering prompts"
-    ):
-        prompts = prefilter_prompts(
-            model, sae, vocab=vocab, tokens=tokens, split_feats=split_feats
-        )
-        random.shuffle(prompts)
-        results[letter] = (num_true_positives, split_feats, prompts)
-    return results
+    return metric_fn
 
 
 def calculate_ig_ablation_and_cos_sims(
-    model: HookedTransformer,
+    calculator: FeatureAbsorptionCalculator,
     sae: SAE,
     probe: LinearProbe,
     likely_negs: dict[str, tuple[int, list[int], list[str]]],
     max_prompts_per_letter: int = 50,
 ) -> pd.DataFrame:
     results = []
-    processed_prompts_and_toks = filter_and_gen_prompts(model, sae, likely_negs)
-    total_items = sum(
-        {
-            letter: min(len(v[2]), max_prompts_per_letter)
-            for letter, v in processed_prompts_and_toks.items()
-        }.values()
-    )
-    if total_items == 0:
-        return pd.DataFrame()
-    with tqdm(total=total_items) as pbar:
-        for letter, (
-            num_true_positives,
-            split_feats,
-            prompts,
-        ) in processed_prompts_and_toks.items():
-            with torch.no_grad():
-                cos_sims = (
-                    torch.nn.functional.cosine_similarity(
-                        probe.weights[LETTERS.index(letter)].unsqueeze(0).cuda(),
-                        sae.W_dec,
-                        dim=-1,
-                    )
-                    .float()
-                    .cpu()
-                )
-            for prompt in prompts[:max_prompts_per_letter]:
-                ig_scores, sae_acts = ig_ablate(model, sae, prompt)
-                with torch.no_grad():
-                    top_ig_feats = ig_scores.abs().topk(k=10).indices.tolist()
-                    top_ig_scores = ig_scores[top_ig_feats].tolist()
-                    feat_cos_sims = cos_sims[top_ig_feats].tolist()
-                    result = {
-                        "letter": letter,
-                        "token": prompt.word,
-                        "prompt": prompt.base,
-                        "sample_portion": 1.0
-                        if len(prompts) <= max_prompts_per_letter
-                        else max_prompts_per_letter / len(prompts),
-                        "num_true_positives": num_true_positives,
-                        "split_feats": split_feats,
-                        "split_feat_acts": sae_acts[split_feats].tolist(),
-                        "top_ablation_feat": top_ig_feats[0],
-                        "top_ablation_score": top_ig_scores[0],
-                        "top_ablation_feat_probe_cos": feat_cos_sims[0],
-                        "second_ablation_feat": top_ig_feats[1],
-                        "second_ablation_score": top_ig_scores[1],
-                        "second_ablation_feat_probe_cos": feat_cos_sims[1],
-                        "ablation_scores": top_ig_scores,
-                        "ablation_feats": top_ig_feats,
-                        "ablation_feat_acts": sae_acts[top_ig_feats].tolist(),
-                        "ablation_feat_prob_cos": feat_cos_sims,
-                    }
-                    results.append(result)
-                    pbar.update(1)
+    for letter, (
+        num_true_positives,
+        split_feats,
+        words,
+    ) in tqdm(likely_negs.items()):
+        assert calculator.model.tokenizer is not None
+        absorption_results = calculator.calculate_absorption_sampled(
+            sae,
+            words=words,
+            probe_dir=probe.weights[LETTERS.index(letter)],
+            metric_fn=letter_delta_metric(calculator.model.tokenizer, letter),
+            main_feature_ids=split_feats,
+            max_ablation_samples=max_prompts_per_letter,
+            show_progress=False,
+        )
+        for sample in absorption_results.sample_results:
+            top_feat_score = sample.top_ablation_feature_scores[0]
+            second_feat_score = sample.top_ablation_feature_scores[1]
+            result = {
+                "letter": letter,
+                "token": sample.word,
+                "prompt": sample.prompt,
+                "sample_portion": absorption_results.sample_portion,
+                "num_true_positives": num_true_positives,
+                "split_feats": split_feats,
+                "split_feat_acts": [
+                    score.activation for score in sample.main_feature_scores
+                ],
+                "split_feat_probe_cos": [
+                    score.probe_cos_sim for score in sample.main_feature_scores
+                ],
+                "top_ablation_feat": top_feat_score.feature_id,
+                "top_ablation_score": top_feat_score.ablation_score,
+                "top_ablation_feat_probe_cos": top_feat_score.probe_cos_sim,
+                "second_ablation_feat": second_feat_score.feature_id,
+                "second_ablation_score": second_feat_score.ablation_score,
+                "second_ablation_feat_probe_cos": second_feat_score.probe_cos_sim,
+                "ablation_scores": [
+                    score.ablation_score for score in sample.top_ablation_feature_scores
+                ],
+                "ablation_feats": [
+                    score.feature_id for score in sample.top_ablation_feature_scores
+                ],
+                "ablation_feat_acts": [
+                    score.activation for score in sample.top_ablation_feature_scores
+                ],
+                "ablation_feat_probe_cos": [
+                    score.probe_cos_sim for score in sample.top_ablation_feature_scores
+                ],
+                "is_absorption": sample.is_absorption,
+            }
+            results.append(result)
     result_df = pd.DataFrame(results)
-    enhance_df(result_df)
     return result_df
 
 
@@ -231,6 +134,9 @@ def get_likely_false_negative_tokens(
     sparse_probing_task_output_dir: Path,
     sparse_probing_sae_post_act: bool,
 ) -> dict[str, tuple[int, list[int], list[str]]]:
+    """
+    Examine the k-sparse probing results and look for false-negative cases where the k top feats don't fire but our LR probe does
+    """
     results: dict[str, tuple[int, list[int], list[str]]] = {}
     raw_df = load_experiment_df(
         SPARSE_PROBING_EXPERIMENT_NAME,
@@ -259,7 +165,7 @@ def get_likely_false_negative_tokens(
 
 
 def load_and_run_calculate_ig_ablation_and_cos_sims(
-    model: HookedTransformer,
+    calculator: FeatureAbsorptionCalculator,
     auroc_f1_df: pd.DataFrame,
     sae_info: SaeInfo,
     sparse_probing_task_output_dir: Path,
@@ -274,7 +180,7 @@ def load_and_run_calculate_ig_ablation_and_cos_sims(
         sparse_probing_task_output_dir,
         sparse_probing_sae_post_act,
     )
-    return calculate_ig_ablation_and_cos_sims(model, sae, probe, likely_negs)
+    return calculate_ig_ablation_and_cos_sims(calculator, sae, probe, likely_negs)
 
 
 def _aggregate_results_df(
@@ -396,6 +302,7 @@ def run_feature_absortion_experiments(
     sparse_probing_sae_post_act: bool = True,
     force: bool = False,
     skip_1m_saes: bool = False,
+    feature_split_f1_jump_threshold: float = 0.03,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     """
     NOTE: this experiments requires the results of the k-sparse probing experiments. Make sure to run them first.
@@ -404,7 +311,22 @@ def run_feature_absortion_experiments(
     sparse_probing_task_output_dir = get_task_dir(
         sparse_probing_experiment_dir, task=task
     )
+
     model = load_gemma2_model()
+    vocab = get_alpha_tokens(model.tokenizer)  # type: ignore
+    calculator = FeatureAbsorptionCalculator(
+        model=model,
+        icl_word_list=vocab,
+        max_icl_examples=10,
+        base_template=VERBOSE_FIRST_LETTER_TEMPLATE,
+        answer_formatter=first_letter_formatter(),
+        word_token_pos=VERBOSE_FIRST_LETTER_TOKEN_POS,
+        probe_cos_sim_threshold=ABSORPTION_PROBE_COS_THRESHOLD,
+        ablation_delta_threshold=ABSORPTION_FEATURE_DELTA_THRESHOLD,
+        ig_batch_size=6,
+        ig_interpolation_steps=6,
+        filter_prompts_batch_size=40,
+    )
     results_by_layer: dict[int, list[tuple[pd.DataFrame, SaeInfo]]] = defaultdict(list)
     with tqdm(total=len(layers)) as pbar:
         for layer in layers:
@@ -416,9 +338,12 @@ def run_feature_absortion_experiments(
                 auroc_f1_df = load_experiment_df(
                     SPARSE_PROBING_EXPERIMENT_NAME,
                     sparse_probing_task_output_dir
-                    / get_sparse_probing_raw_results_filename(
+                    / get_sparse_probing_auroc_f1_results_filename(
                         sae_info, sparse_probing_sae_post_act
                     ),
+                )
+                add_feature_splits_to_auroc_f1_df(
+                    auroc_f1_df, feature_split_f1_jump_threshold
                 )
                 df_path = (
                     task_output_dir
@@ -426,7 +351,7 @@ def run_feature_absortion_experiments(
                 )
                 df = load_df_or_run(
                     lambda: load_and_run_calculate_ig_ablation_and_cos_sims(
-                        model,
+                        calculator,
                         auroc_f1_df,
                         sae_info,
                         sparse_probing_task_output_dir,
