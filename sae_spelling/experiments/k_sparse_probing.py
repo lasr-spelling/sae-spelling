@@ -201,7 +201,7 @@ def eval_probe_and_sae_k_sparse_raw_scores(
                     row[f"score_sparse_sae_{letter}_k_{k}"] = k_probe_score.item()
                     row[f"sum_sparse_sae_{letter}_k_{k}"] = sparse_acts.sum().item()
                     row[f"sparse_sae_{letter}_k_{k}_feats"] = (
-                        k_probe.feature_ids.tolist()
+                        k_probe.feature_ids.numpy()
                     )
                     row[f"sparse_sae_{letter}_k_{k}_acts"] = sparse_acts.numpy()
                     row[f"cos_probe_sae_enc_{letter}_k_{k}"] = probe_enc_cos[
