@@ -32,7 +32,7 @@ from sae_spelling.util import DEFAULT_DEVICE
 from sae_spelling.vocab import LETTERS
 
 EPS = 1e-6
-KS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 50)
+KS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50)
 SPARSE_PROBING_EXPERIMENT_NAME = "k_sparse_probing"
 
 
