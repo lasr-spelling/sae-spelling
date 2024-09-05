@@ -184,3 +184,28 @@ def test_create_icl_prompt_peformance_is_fast(gpt2_tokenizer: GPT2TokenizerFast)
             for word in vocab
         ]
         assert len(prompts) == len(vocab)
+
+
+def test_create_icl_prompt_avoids_contamination():
+    word = "target"
+    examples = ["dog", "cat", "target", "man", "target", "child"]
+    max_icl_examples = 3
+
+    prompt = create_icl_prompt(
+        word=word,
+        examples=examples,
+        max_icl_examples=max_icl_examples,
+        check_contamination=True,
+    )
+
+    icl_examples_in_prompt = prompt.base.split("\n")[:-1]
+
+    # Check that none of the ICL examples contain the target word
+    for icl_example in icl_examples_in_prompt:
+        assert word not in icl_example, f"Contamination found: {icl_example}"
+
+    # Also check that the correct number of examples were used
+    assert len(icl_examples_in_prompt) == max_icl_examples, (
+        f"Expected {max_icl_examples} examples, "
+        f"but found {len(icl_examples_in_prompt)}."
+    )
