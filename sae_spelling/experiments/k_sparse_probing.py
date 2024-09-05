@@ -168,49 +168,49 @@ def eval_probe_and_sae_k_sparse_raw_scores(
     norm_W_dec = sae.W_dec / torch.norm(sae.W_dec, dim=-1, keepdim=True)
     probe_dec_cos = (norm_probe_weights.to(norm_W_dec.device) @ norm_W_dec.T).cpu()
     probe_enc_cos = (norm_probe_weights.to(norm_W_enc.device) @ norm_W_enc).cpu()
-    vocab_scores = []
     probe = probe.to("cpu")
-    for token_act, (token, answer_idx) in tqdm(
-        zip(eval_activations, eval_labels), total=len(eval_labels)
-    ):
-        probe_scores = probe(token_act).tolist()
-        token_scores: dict[str, float | str | int | list[int]] = {
-            "token": token,
-            "answer_letter": LETTERS[answer_idx],
-            **metadata,
-        }
-        sae_acts = (
-            _get_sae_acts(sae, token_act.unsqueeze(0).to(sae.device), sae_post_act)
-            .float()
-            .cpu()
-        ).squeeze()
-        for letter_i, (letter, probe_score) in enumerate(zip(LETTERS, probe_scores)):
-            token_scores[f"score_probe_{letter}"] = probe_score
-            for k, k_probes in k_sparse_probes.items():
-                k_probe = k_probes[letter_i]
-                k_probe_score = k_probe(sae_acts)
-                sparse_acts = sae_acts[k_probe.feature_ids]
-                token_scores[f"score_sparse_sae_{letter}_k_{k}"] = k_probe_score.item()
-                token_scores[f"sum_sparse_sae_{letter}_k_{k}"] = (
-                    sparse_acts.sum().item()
-                )
-                token_scores[f"sparse_sae_{letter}_k_{k}_feats"] = (
-                    k_probe.feature_ids.tolist()
-                )
-                token_scores[f"sparse_sae_{letter}_k_{k}_acts"] = sparse_acts.tolist()
-                token_scores[f"cos_probe_sae_enc_{letter}_k_{k}"] = probe_enc_cos[
-                    letter_i, k_probe.feature_ids
-                ].tolist()
-                token_scores[f"cos_probe_sae_dec_{letter}_k_{k}"] = probe_dec_cos[
-                    letter_i, k_probe.feature_ids
-                ].tolist()
-                token_scores[f"sparse_sae_{letter}_k_{k}_weights"] = (
-                    k_probe.weight.tolist()
-                )
-                token_scores[f"sparse_sae_{letter}_k_{k}_bias"] = k_probe.bias.item()
 
-        vocab_scores.append(token_scores)
-    return pd.DataFrame(vocab_scores)
+    # using a generator to avoid storing all the rows in memory
+    def row_generator():
+        for token_act, (token, answer_idx) in tqdm(
+            zip(eval_activations, eval_labels), total=len(eval_labels)
+        ):
+            probe_scores = probe(token_act).tolist()
+            row: dict[str, float | str | int | list[int]] = {
+                "token": token,
+                "answer_letter": LETTERS[answer_idx],
+                **metadata,
+            }
+            sae_acts = (
+                _get_sae_acts(sae, token_act.unsqueeze(0).to(sae.device), sae_post_act)
+                .float()
+                .cpu()
+            ).squeeze()
+            for letter_i, (letter, probe_score) in enumerate(
+                zip(LETTERS, probe_scores)
+            ):
+                row[f"score_probe_{letter}"] = probe_score
+                for k, k_probes in k_sparse_probes.items():
+                    k_probe = k_probes[letter_i]
+                    k_probe_score = k_probe(sae_acts)
+                    sparse_acts = sae_acts[k_probe.feature_ids]
+                    row[f"score_sparse_sae_{letter}_k_{k}"] = k_probe_score.item()
+                    row[f"sum_sparse_sae_{letter}_k_{k}"] = sparse_acts.sum().item()
+                    row[f"sparse_sae_{letter}_k_{k}_feats"] = (
+                        k_probe.feature_ids.tolist()
+                    )
+                    row[f"sparse_sae_{letter}_k_{k}_acts"] = sparse_acts.tolist()
+                    row[f"cos_probe_sae_enc_{letter}_k_{k}"] = probe_enc_cos[
+                        letter_i, k_probe.feature_ids
+                    ].tolist()
+                    row[f"cos_probe_sae_dec_{letter}_k_{k}"] = probe_dec_cos[
+                        letter_i, k_probe.feature_ids
+                    ].tolist()
+                    row[f"sparse_sae_{letter}_k_{k}_weights"] = k_probe.weight.tolist()
+                    row[f"sparse_sae_{letter}_k_{k}_bias"] = k_probe.bias.item()
+            yield row
+
+    return pd.DataFrame(row_generator())
 
 
 def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
