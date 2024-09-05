@@ -226,7 +226,11 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
         )
         probe = load_probe(task="first_letter", layer=sae_info.layer)
         train_activations, train_data = load_probe_data_split(
-            tokenizer, task="first_letter", layer=sae_info.layer, device="cpu"
+            tokenizer,
+            task="first_letter",
+            layer=sae_info.layer,
+            split="train",
+            device="cpu",
         )
     k_sparse_probes = train_k_sparse_probes(
         sae,
@@ -236,7 +240,11 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
     )
     with torch.no_grad():
         eval_activations, eval_data = load_probe_data_split(
-            tokenizer, task="first_letter", layer=sae_info.layer, device="cpu"
+            tokenizer,
+            task="first_letter",
+            layer=sae_info.layer,
+            split="test",
+            device="cpu",
         )
         df = eval_probe_and_sae_k_sparse_raw_scores(
             sae,

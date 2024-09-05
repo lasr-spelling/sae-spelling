@@ -94,7 +94,7 @@ def load_probe_data_split(
     tokenizer: PreTrainedTokenizerFast,
     task: str = "first_letter",
     layer: int = 0,
-    split: Literal["train", "val"] = "val",
+    split: Literal["train", "test"] = "test",
     probes_dir: str | Path = PROBES_DIR,
     dtype: torch.dtype = DEFAULT_DTYPE,
     device: str = DEFAULT_DEVICE,
@@ -103,30 +103,25 @@ def load_probe_data_split(
         Path(probes_dir) / task / f"layer_{layer}" / f"{task}_data.npz",
     )
     df = pd.read_csv(
-        Path(probes_dir) / task / f"layer_{layer}" / f"{task}_df.csv",
+        Path(probes_dir) / task / f"layer_{layer}" / f"{task}_{split}_df.csv",
         keep_default_na=False,
         na_values=[""],
     )
     activations = torch.from_numpy(np_data[f"X_{split}"]).to(device, dtype=dtype)
     labels = np_data[f"y_{split}"].tolist()
-    indices: list[int] = np_data[f"{split}_idx"].tolist()
-    return _parse_probe_data_split(
-        tokenizer, activations, split_labels=labels, split_indices=indices, df=df
-    )
+    return _parse_probe_data_split(tokenizer, activations, split_labels=labels, df=df)
 
 
 def _parse_probe_data_split(
     tokenizer: PreTrainedTokenizerFast,
     split_activations: torch.Tensor,
     split_labels: list[int],
-    split_indices: list[int],
     df: pd.DataFrame,
 ) -> tuple[torch.Tensor, list[tuple[str, int]]]:
     valid_act_indices = []
     vocab_with_labels = []
     raw_tokens_with_labels = [
-        (df.iloc[idx]["token"], label)
-        for idx, label in zip(split_indices, split_labels)
+        (df.iloc[idx]["token"], label) for idx, label in enumerate(split_labels)
     ]
     for idx, (token, label) in enumerate(raw_tokens_with_labels):
         # sometimes we have tokens that look like <0x6A>
