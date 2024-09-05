@@ -350,7 +350,7 @@ def add_feature_splits_to_auroc_f1_df(
         df_letter = df[df["letter"] == letter]
         for k in ks:
             k_score = df_letter[f"f1_sparse_sae_{k}"].iloc[0]  # type: ignore
-            k_feats = df_letter[f"sparse_sae_k_{k}_feats"].iloc[0].tolist()  # type: ignore
+            k_feats = df_letter[f"sparse_sae_k_{k}_feats"].iloc[0]  # type: ignore
             if k_score > prev_best + f1_jump_threshold:
                 prev_best = k_score
                 split_feats_by_letter[letter] = k_feats
