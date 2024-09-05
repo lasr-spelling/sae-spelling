@@ -31,7 +31,8 @@ from sae_spelling.probing import LinearProbe, train_multi_probe
 from sae_spelling.util import DEFAULT_DEVICE
 from sae_spelling.vocab import LETTERS
 
-KS = (1, 2, 3, 4, 5, 10, 20, 50)
+EPS = 1e-6
+KS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 50)
 SPARSE_PROBING_EXPERIMENT_NAME = "k_sparse_probing"
 
 
@@ -136,6 +137,7 @@ def train_k_sparse_probes(
         train_k_y = np.array([idx for _, idx in train_labels])
         for k in ks:
             for label in labels:
+                # using topk and not abs() because we only want features that directly predict the label
                 sparse_feat_ids = l1_probe.weights[label].topk(k).indices.numpy()
                 train_k_x = sae_feat_acts_np[:, sparse_feat_ids]
                 # Use SKLearn here because it's much faster than torch if the data is small
@@ -161,6 +163,11 @@ def eval_probe_and_sae_k_sparse_raw_scores(
     metadata: dict[str, str | int | float] = {},
     sae_post_act: bool = True,  # whether to train the probe before or after the SAE Relu activation
 ) -> pd.DataFrame:
+    norm_probe_weights = probe.weights / torch.norm(probe.weights, dim=-1, keepdim=True)
+    norm_W_enc = sae.W_enc / torch.norm(sae.W_enc, dim=0, keepdim=True)
+    norm_W_dec = sae.W_dec / torch.norm(sae.W_dec, dim=-1, keepdim=True)
+    probe_dec_cos = (norm_probe_weights.to(norm_W_dec.device) @ norm_W_dec.T).cpu()
+    probe_enc_cos = (norm_probe_weights.to(norm_W_enc.device) @ norm_W_enc).cpu()
     vocab_scores = []
     probe = probe.to("cpu")
     for token_act, (token, answer_idx) in tqdm(
@@ -182,10 +189,25 @@ def eval_probe_and_sae_k_sparse_raw_scores(
             for k, k_probes in k_sparse_probes.items():
                 k_probe = k_probes[letter_i]
                 k_probe_score = k_probe(sae_acts)
+                sparse_acts = sae_acts[k_probe.feature_ids]
                 token_scores[f"score_sparse_sae_{letter}_k_{k}"] = k_probe_score.item()
+                token_scores[f"sum_sparse_sae_{letter}_k_{k}"] = (
+                    sparse_acts.sum().item()
+                )
                 token_scores[f"sparse_sae_{letter}_k_{k}_feats"] = (
                     k_probe.feature_ids.tolist()
                 )
+                token_scores[f"sparse_sae_{letter}_k_{k}_acts"] = sparse_acts.tolist()
+                token_scores[f"cos_probe_sae_enc_{letter}_k_{k}"] = probe_enc_cos[
+                    letter_i, k_probe.feature_ids
+                ].tolist()
+                token_scores[f"cos_probe_sae_dec_{letter}_k_{k}"] = probe_dec_cos[
+                    letter_i, k_probe.feature_ids
+                ].tolist()
+                token_scores[f"sparse_sae_{letter}_k_{k}_weights"] = (
+                    k_probe.weight.tolist()
+                )
+                token_scores[f"sparse_sae_{letter}_k_{k}_bias"] = k_probe.bias.item()
 
         vocab_scores.append(token_scores)
     return pd.DataFrame(vocab_scores)
@@ -272,6 +294,12 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
             best_f1_bias_sae, f1_sae_best = find_optimal_f1_threshold(y, pred_sae)
             recall_sae_best = metrics.recall_score(y, pred_sae > best_f1_bias_sae)
             precision_sae_best = metrics.precision_score(y, pred_sae > best_f1_bias_sae)
+            sum_sae_pred = results_df[f"sum_sparse_sae_{letter}_k_{k}"].values
+            auc_sum_sae = metrics.roc_auc_score(y, sum_sae_pred)
+            f1_sum_sae = metrics.f1_score(y, sum_sae_pred > EPS)
+            recall_sum_sae = metrics.recall_score(y, sum_sae_pred > EPS)
+            precision_sum_sae = metrics.precision_score(y, sum_sae_pred > EPS)
+
             auc_info[f"f1_sparse_sae_{k}"] = f1
             auc_info[f"recall_sparse_sae_{k}"] = recall
             auc_info[f"recall_sparse_sae_{k}_best"] = recall_sae_best
@@ -279,8 +307,24 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
             auc_info[f"precision_sparse_sae_{k}_best"] = precision_sae_best
             auc_info[f"f1_sparse_sae_{k}_best"] = f1_sae_best
             auc_info[f"bias_f1_sparse_sae_{k}_best"] = best_f1_bias_sae
+            auc_info[f"auc_sum_sparse_sae_{k}"] = auc_sum_sae
+            auc_info[f"f1_sum_sparse_sae_{k}"] = f1_sum_sae
+            auc_info[f"recall_sum_sparse_sae_{k}"] = recall_sum_sae
+            auc_info[f"precision_sum_sparse_sae_{k}"] = precision_sum_sae
             auc_info[f"sparse_sae_k_{k}_feats"] = results_df[
                 f"sparse_sae_{letter}_k_{k}_feats"
+            ].values[0]
+            auc_info[f"cos_probe_sae_enc_{letter}_k_{k}"] = results_df[
+                f"cos_probe_sae_enc_{letter}_k_{k}"
+            ].values[0]
+            auc_info[f"cos_probe_sae_dec_{letter}_k_{k}"] = results_df[
+                f"cos_probe_sae_dec_{letter}_k_{k}"
+            ].values[0]
+            auc_info[f"sparse_sae_k_{k}_weights"] = results_df[
+                f"sparse_sae_{letter}_k_{k}_weights"
+            ].values[0]
+            auc_info[f"sparse_sae_k_{k}_bias"] = results_df[
+                f"sparse_sae_{letter}_k_{k}_bias"
             ].values[0]
         aucs.append(auc_info)
     return pd.DataFrame(aucs)

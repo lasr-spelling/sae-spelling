@@ -23,7 +23,14 @@ DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 TEAM_DIR = Path("/content/drive/MyDrive/Team_Joseph")
 EXPERIMENTS_DIR = TEAM_DIR / "experiments"
-PROBES_DIR = TEAM_DIR / "data" / "probing_data" / "gemma-2" / "verbose_prompts"
+PROBES_DIR = (
+    TEAM_DIR
+    / "data"
+    / "probing_data"
+    / "gemma-2"
+    / "verbose_prompts"
+    / "no_contamination"
+)
 
 
 def dtype_to_str(dtype: torch.dtype | str) -> str:

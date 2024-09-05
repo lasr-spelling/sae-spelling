@@ -39,13 +39,13 @@ def eval_probe_and_top_sae_raw_scores(
     topk: int = 5,
     metadata: dict[str, str | int | float] = {},
 ) -> pd.DataFrame:
+    norm_probe_weights = probe.weights / torch.norm(probe.weights, dim=-1, keepdim=True)
     norm_W_enc = sae.W_enc / torch.norm(sae.W_enc, dim=0, keepdim=True)
+    norm_W_dec = sae.W_dec / torch.norm(sae.W_dec, dim=-1, keepdim=True)
+    probe_dec_cos = (norm_probe_weights.to(norm_W_dec.device) @ norm_W_dec.T).cpu()
+    probe_enc_cos = (norm_probe_weights.to(norm_W_enc.device) @ norm_W_enc).cpu()
     # Take the topk features by cos sim between the encoder and the probe
-    top_sae_feats = (
-        (probe.weights.to(norm_W_enc.device) @ norm_W_enc)
-        .topk(topk, dim=-1)
-        .indices.cpu()
-    )
+    top_sae_feats = probe_enc_cos.topk(topk, dim=-1).indices
     probe = probe.cpu()
     effective_bias = sae.b_enc
     # jumprelu SAEs have a separate threshold which must be passed before a feature can fire
@@ -73,10 +73,15 @@ def eval_probe_and_top_sae_raw_scores(
         for letter_i, (letter, probe_score) in enumerate(zip(LETTERS, probe_scores)):
             token_scores[f"score_probe_{letter}"] = probe_score
             for topk_i, sae_scores in enumerate(sae_scores_topk):
+                feat_id = int(top_sae_feats_list[letter_i][topk_i])
                 sae_score = sae_scores[letter_i]
                 token_scores[f"score_sae_{letter}_top_{topk_i}"] = sae_score
-                token_scores[f"sae_{letter}_top_{topk_i}_feat"] = int(
-                    top_sae_feats_list[letter_i][topk_i]
+                token_scores[f"sae_{letter}_top_{topk_i}_feat"] = feat_id
+                token_scores[f"cos_probe_sae_enc_{letter}_top_{topk_i}"] = (
+                    probe_enc_cos[letter_i, feat_id].item()
+                )
+                token_scores[f"cos_probe_sae_dec_{letter}_top_{topk_i}"] = (
+                    probe_dec_cos[letter_i, feat_id].item()
                 )
         vocab_scores.append(token_scores)
     return pd.DataFrame(vocab_scores)
@@ -144,6 +149,12 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
             auc_info[f"bias_f1_sae_top_{topk_i}_best"] = best_f1_bias_sae
             auc_info[f"sae_top_{topk_i}_feat"] = results_df[
                 f"sae_{letter}_top_{topk_i}_feat"
+            ].values[0]
+            auc_info[f"cos_probe_sae_enc_{letter}_top_{topk_i}"] = results_df[
+                f"cos_probe_sae_enc_{letter}_top_{topk_i}"
+            ].values[0]
+            auc_info[f"cos_probe_sae_dec_{letter}_top_{topk_i}"] = results_df[
+                f"cos_probe_sae_dec_{letter}_top_{topk_i}"
             ].values[0]
         aucs.append(auc_info)
     return pd.DataFrame(aucs)
