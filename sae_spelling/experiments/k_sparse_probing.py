@@ -166,8 +166,12 @@ def eval_probe_and_sae_k_sparse_raw_scores(
     norm_probe_weights = probe.weights / torch.norm(probe.weights, dim=-1, keepdim=True)
     norm_W_enc = sae.W_enc / torch.norm(sae.W_enc, dim=0, keepdim=True)
     norm_W_dec = sae.W_dec / torch.norm(sae.W_dec, dim=-1, keepdim=True)
-    probe_dec_cos = (norm_probe_weights.to(norm_W_dec.device) @ norm_W_dec.T).cpu()
-    probe_enc_cos = (norm_probe_weights.to(norm_W_enc.device) @ norm_W_enc).cpu()
+    probe_dec_cos = (
+        (norm_probe_weights.to(norm_W_dec.device) @ norm_W_dec.T).cpu().float()
+    )
+    probe_enc_cos = (
+        (norm_probe_weights.to(norm_W_enc.device) @ norm_W_enc).cpu().float()
+    )
     probe = probe.to("cpu")
 
     # using a generator to avoid storing all the rows in memory
@@ -199,14 +203,16 @@ def eval_probe_and_sae_k_sparse_raw_scores(
                     row[f"sparse_sae_{letter}_k_{k}_feats"] = (
                         k_probe.feature_ids.tolist()
                     )
-                    row[f"sparse_sae_{letter}_k_{k}_acts"] = sparse_acts.tolist()
+                    row[f"sparse_sae_{letter}_k_{k}_acts"] = sparse_acts.numpy()
                     row[f"cos_probe_sae_enc_{letter}_k_{k}"] = probe_enc_cos[
                         letter_i, k_probe.feature_ids
-                    ].tolist()
+                    ].numpy()
                     row[f"cos_probe_sae_dec_{letter}_k_{k}"] = probe_dec_cos[
                         letter_i, k_probe.feature_ids
-                    ].tolist()
-                    row[f"sparse_sae_{letter}_k_{k}_weights"] = k_probe.weight.tolist()
+                    ].numpy()
+                    row[f"sparse_sae_{letter}_k_{k}_weights"] = (
+                        k_probe.weight.float().numpy()
+                    )
                     row[f"sparse_sae_{letter}_k_{k}_bias"] = k_probe.bias.item()
             yield row
 
@@ -350,7 +356,7 @@ def add_feature_splits_to_auroc_f1_df(
         df_letter = df[df["letter"] == letter]
         for k in ks:
             k_score = df_letter[f"f1_sparse_sae_{k}"].iloc[0]  # type: ignore
-            k_feats = df_letter[f"sparse_sae_k_{k}_feats"].iloc[0]  # type: ignore
+            k_feats = df_letter[f"sparse_sae_k_{k}_feats"].iloc[0].tolist()  # type: ignore
             if k_score > prev_best + f1_jump_threshold:
                 prev_best = k_score
                 split_feats_by_letter[letter] = k_feats
