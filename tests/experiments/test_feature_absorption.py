@@ -3,6 +3,7 @@ from syrupy.assertion import SnapshotAssertion
 from transformer_lens import HookedTransformer
 
 from sae_spelling.experiments.feature_absorption import (
+    StatsAndLikelyFalseNegativeResults,
     calculate_ig_ablation_and_cos_sims,
 )
 from sae_spelling.feature_absorption_calculator import FeatureAbsorptionCalculator
@@ -26,9 +27,9 @@ def test_calculate_ig_ablation_and_cos_sims_gives_sane_results(
         answer_formatter=first_letter_formatter(),
     )
     # format: dict[letter: (num_true_positives, [split_feature_ids], [probable_feature_absorption_words])]
-    likely_negs: dict[str, tuple[int, list[int], list[str]]] = {
-        "a": (10, [1, 2, 3], [" Animal", " apple"]),
-        "b": (100, [12], [" banana", " bear"]),
+    likely_negs: dict[str, StatsAndLikelyFalseNegativeResults] = {
+        "a": StatsAndLikelyFalseNegativeResults(10, [1, 2, 3], [" Animal", " apple"]),
+        "b": StatsAndLikelyFalseNegativeResults(100, [12], [" banana", " bear"]),
     }
     df = calculate_ig_ablation_and_cos_sims(
         calculator, gpt2_l4_sae, fake_probe, likely_negs

@@ -1,5 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
+from typing import NamedTuple
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -46,6 +47,12 @@ ABSORPTION_PROBE_COS_THRESHOLD = 0.025
 ABSORPTION_FEATURE_DELTA_THRESHOLD = 1.0
 
 
+class StatsAndLikelyFalseNegativeResults(NamedTuple):
+    num_true_positives: int
+    split_feats: list[int]
+    potential_false_negatives: list[str]
+
+
 def letter_delta_metric(tokenizer: PreTrainedTokenizerBase, pos_letter: str):
     neg_letters = [
         f" {letter}" for letter in LETTERS_UPPER if pos_letter[-1].upper() != letter
@@ -68,7 +75,7 @@ def calculate_ig_ablation_and_cos_sims(
     calculator: FeatureAbsorptionCalculator,
     sae: SAE,
     probe: LinearProbe,
-    likely_negs: dict[str, tuple[int, list[int], list[str]]],
+    likely_negs: dict[str, StatsAndLikelyFalseNegativeResults],
     max_prompts_per_letter: int = 50,
 ) -> pd.DataFrame:
     results = []
@@ -128,16 +135,16 @@ def calculate_ig_ablation_and_cos_sims(
     return result_df
 
 
-def get_likely_false_negative_tokens(
+def get_stats_and_likely_false_negative_tokens(
     auroc_f1_df: pd.DataFrame,
     sae_info: SaeInfo,
     sparse_probing_task_output_dir: Path,
     sparse_probing_sae_post_act: bool,
-) -> dict[str, tuple[int, list[int], list[str]]]:
+) -> dict[str, StatsAndLikelyFalseNegativeResults]:
     """
     Examine the k-sparse probing results and look for false-negative cases where the k top feats don't fire but our LR probe does
     """
-    results: dict[str, tuple[int, list[int], list[str]]] = {}
+    results: dict[str, StatsAndLikelyFalseNegativeResults] = {}
     raw_df = load_experiment_df(
         SPARSE_PROBING_EXPERIMENT_NAME,
         sparse_probing_task_output_dir
@@ -160,7 +167,9 @@ def get_likely_false_negative_tokens(
             & (raw_df[f"score_probe_{letter}"] > 0)
             & (raw_df[f"score_sparse_sae_{letter}_k_{k}"] > 0)
         ].shape[0]
-        results[letter] = (num_true_positives, split_feats, potential_false_negatives)
+        results[letter] = StatsAndLikelyFalseNegativeResults(
+            num_true_positives, split_feats, potential_false_negatives
+        )
     return results
 
 
@@ -174,7 +183,7 @@ def load_and_run_calculate_ig_ablation_and_cos_sims(
     layer = sae_info.layer
     probe = load_probe(layer=layer)
     sae = load_gemmascope_sae(layer, width=sae_info.width, l0=sae_info.l0)
-    likely_negs = get_likely_false_negative_tokens(
+    likely_negs = get_stats_and_likely_false_negative_tokens(
         auroc_f1_df,
         sae_info,
         sparse_probing_task_output_dir,

@@ -27,6 +27,22 @@ def test_FeatureAbsorptionCalculator_filter_prompts_removes_prompts_where_main_f
     assert filtered_prompts == prompts[1:]
 
 
+def test_FeatureAbsorptionCalculator_filter_prompts_errors_if_prompts_are_variable_lengths(
+    gpt2_model: HookedTransformer,
+    gpt2_l4_sae: SAE,
+):
+    words = [" cat", " antelope", " fish"]
+    calculator = FeatureAbsorptionCalculator(
+        gpt2_model,
+        icl_word_list=["dog"],
+    )
+    prompts = calculator._build_prompts(words)
+    prompts[1].base += "EXTRA TEXT"
+
+    with pytest.raises(ValueError):
+        calculator._filter_prompts(prompts, gpt2_l4_sae, [3, 4])
+
+
 def test_FeatureAbsorptionCalculator_calculate_absorption_sampled_results_look_reasonable(
     gpt2_model: HookedTransformer, gpt2_l4_sae: SAE
 ):

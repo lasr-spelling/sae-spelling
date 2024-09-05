@@ -84,8 +84,9 @@ class FeatureAbsorptionCalculator:
     ) -> list[SpellingPrompt]:
         """
         Filter out any prompts where the main features are already active.
-        NOTE: Assumes that all prompts have the same token length!
+        NOTE: All prompts must have the same token length
         """
+        self._validate_prompts_are_same_length(prompts)
         results: list[SpellingPrompt] = []
         for batch in batchify(prompts, batch_size=self.filter_prompts_batch_size):
             sae_in = self.model.run_with_cache([p.base for p in batch])[1][
@@ -244,6 +245,14 @@ class FeatureAbsorptionCalculator:
             main_feature_ids=main_feature_ids,
             sample_results=results,
         )
+
+    def _validate_prompts_are_same_length(self, prompts: list[SpellingPrompt]):
+        "Validate that all prompts have the same token length"
+        token_lens = {len(self.model.to_tokens(p.base)[0]) for p in prompts}
+        if len(token_lens) > 1:
+            raise ValueError(
+                "All prompts must have the same token length! Variable-length prompts are not yet supported."
+            )
 
 
 def _get_feature_scores(
