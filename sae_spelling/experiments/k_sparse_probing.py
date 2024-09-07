@@ -28,7 +28,7 @@ from sae_spelling.experiments.common import (
 )
 from sae_spelling.experiments.encoder_auroc_and_f1 import find_optimal_f1_threshold
 from sae_spelling.probing import LinearProbe, train_multi_probe
-from sae_spelling.util import DEFAULT_DEVICE
+from sae_spelling.util import DEFAULT_DEVICE, batchify
 from sae_spelling.vocab import LETTERS
 
 EPS = 1e-6
@@ -98,9 +98,14 @@ def _get_sae_acts(
     sae: SAE,
     input_activations: torch.Tensor,
     sae_post_act: bool,  # whether to train the probe before or after the SAE Relu activation
+    batch_size: int = 4096,
 ) -> torch.Tensor:
     hook_point = "hook_sae_acts_post" if sae_post_act else "hook_sae_acts_pre"
-    return sae.run_with_cache(input_activations.to(sae.device))[1][hook_point]
+    batch_acts = []
+    for batch in batchify(input_activations, batch_size):
+        acts = sae.run_with_cache(batch.to(sae.device))[1][hook_point].cpu()
+        batch_acts.append(acts)
+    return torch.cat(batch_acts)
 
 
 def train_k_sparse_probes(

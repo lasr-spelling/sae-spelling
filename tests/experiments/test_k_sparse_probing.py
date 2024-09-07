@@ -55,6 +55,13 @@ def test_get_sae_acts(gpt2_l4_sae: SAE):
     assert sae_acts.shape == (24576,)
 
 
+def test_get_sae_acts_gives_same_results_batched_and_not_batched(gpt2_l4_sae: SAE):
+    token_acts = torch.randn(10, 768)
+    sae_acts_unbatched = _get_sae_acts(gpt2_l4_sae, token_acts, True, batch_size=1)
+    sae_acts_batched = _get_sae_acts(gpt2_l4_sae, token_acts, True, batch_size=5)
+    assert torch.allclose(sae_acts_unbatched, sae_acts_batched)
+
+
 def test_eval_probe_and_sae_k_sparse_raw_scores_gives_sane_results(
     gpt2_l4_sae: SAE, snapshot: SnapshotAssertion
 ):

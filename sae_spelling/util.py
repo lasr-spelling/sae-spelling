@@ -1,5 +1,5 @@
 from collections.abc import Generator, Sequence
-from typing import TypeVar
+from typing import TypeVar, overload
 
 import torch
 from tqdm.autonotebook import tqdm
@@ -11,9 +11,21 @@ K = TypeVar("K")
 DEFAULT_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+@overload
 def batchify(
     data: Sequence[T], batch_size: int, show_progress: bool = False
-) -> Generator[Sequence[T], None, None]:
+) -> Generator[Sequence[T], None, None]: ...
+
+
+@overload
+def batchify(
+    data: torch.Tensor, batch_size: int, show_progress: bool = False
+) -> Generator[torch.Tensor, None, None]: ...
+
+
+def batchify(
+    data: Sequence[T] | torch.Tensor, batch_size: int, show_progress: bool = False
+) -> Generator[Sequence[T] | torch.Tensor, None, None]:
     """Generate batches from data. If show_progress is True, display a progress bar."""
 
     for i in tqdm(
