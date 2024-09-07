@@ -138,13 +138,12 @@ def train_k_sparse_probes(
         .cpu()
     )
     with torch.no_grad():
-        sae_feat_acts_np = sae_feat_acts.cpu().float().numpy()
         train_k_y = np.array([idx for _, idx in train_labels])
         for k in ks:
             for label in labels:
                 # using topk and not abs() because we only want features that directly predict the label
                 sparse_feat_ids = l1_probe.weights[label].topk(k).indices.numpy()
-                train_k_x = sae_feat_acts_np[:, sparse_feat_ids]
+                train_k_x = sae_feat_acts[:, sparse_feat_ids].float().numpy()
                 # Use SKLearn here because it's much faster than torch if the data is small
                 sk_probe = LogisticRegression(
                     max_iter=500, class_weight="balanced"
