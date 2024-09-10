@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Callable, Iterable, Literal
 
 import numpy as np
 import pandas as pd
@@ -202,13 +202,22 @@ def load_df_or_run(
     path: Path,
     force: bool = False,
 ) -> pd.DataFrame:
-    if force or not path.exists():
-        df = fn()
-        df.to_parquet(path, index=False)
+    return load_dfs_or_run(lambda: [fn()], [path], force)[0]
+
+
+def load_dfs_or_run(
+    fn: Callable[[], Iterable[pd.DataFrame]],
+    paths: Iterable[Path],
+    force: bool = False,
+) -> list[pd.DataFrame]:
+    if force or not all(path.exists() for path in paths):
+        dfs = fn()
+        for df, path in zip(dfs, paths):
+            df.to_parquet(path, index=False)
     else:
-        print(f"{path} exists, loading from disk")
-        df = pd.read_parquet(path)
-    return df
+        print(f"{paths} exist(s), loading from disk")
+        dfs = [pd.read_parquet(path) for path in paths]
+    return list(dfs)
 
 
 def humanify_sae_width(width: int) -> str:
