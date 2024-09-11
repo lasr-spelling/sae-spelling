@@ -1,6 +1,6 @@
 from collections import defaultdict
-from collections.abc import Iterable
 from pathlib import Path
+from typing import Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -112,7 +112,7 @@ def train_k_sparse_probes(
     sae: SAE,
     train_labels: list[tuple[str, int]],  # list of (token, letter number) pairs
     train_activations: torch.Tensor,  # n_vocab X d_model
-    ks: Iterable[int] = KS,
+    ks: Sequence[int] = KS,
 ) -> dict[int, dict[int, KSparseProbe]]:  # dict[k, dict[letter_id, probe]]
     """
     Train k-sparse probes for each k in ks.
@@ -138,21 +138,23 @@ def train_k_sparse_probes(
     )
     with torch.no_grad():
         train_k_y = np.array([idx for _, idx in train_labels])
-        for k in ks:
-            for label in labels:
-                # using topk and not abs() because we only want features that directly predict the label
-                sparse_feat_ids = l1_probe.weights[label].topk(k).indices.numpy()
-                train_k_x = sae_feat_acts[:, sparse_feat_ids].float().numpy()
-                # Use SKLearn here because it's much faster than torch if the data is small
-                sk_probe = LogisticRegression(
-                    max_iter=500, class_weight="balanced"
-                ).fit(train_k_x, (train_k_y == label).astype(np.int64))
-                probe = KSparseProbe(
-                    weight=torch.tensor(sk_probe.coef_[0]).float(),
-                    bias=torch.tensor(sk_probe.intercept_[0]).float(),
-                    feature_ids=torch.tensor(sparse_feat_ids),
-                )
-                results[k][label] = probe
+        with tqdm(total=len(ks) * len(labels), desc="training k-probes") as pbar:
+            for k in ks:
+                for label in labels:
+                    # using topk and not abs() because we only want features that directly predict the label
+                    sparse_feat_ids = l1_probe.weights[label].topk(k).indices.numpy()
+                    train_k_x = sae_feat_acts[:, sparse_feat_ids].float().numpy()
+                    # Use SKLearn here because it's much faster than torch if the data is small
+                    sk_probe = LogisticRegression(
+                        max_iter=500, class_weight="balanced"
+                    ).fit(train_k_x, (train_k_y == label).astype(np.int64))
+                    probe = KSparseProbe(
+                        weight=torch.tensor(sk_probe.coef_[0]).float(),
+                        bias=torch.tensor(sk_probe.intercept_[0]).float(),
+                        feature_ids=torch.tensor(sparse_feat_ids),
+                    )
+                    results[k][label] = probe
+                    pbar.update(1)
     return results
 
 
