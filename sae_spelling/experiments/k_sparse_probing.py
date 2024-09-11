@@ -21,6 +21,7 @@ from sae_spelling.experiments.common import (
     get_gemmascope_saes_info,
     get_task_dir,
     humanify_sae_width,
+    load_df_or_run,
     load_dfs_or_run,
     load_gemmascope_sae,
     load_probe,
@@ -290,7 +291,7 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
     return df, metadata
 
 
-def build_f1_and_auroc_df(results_df, metadata_df, sae_info: SaeInfo):
+def build_f1_and_auroc_df(results_df, metadata_df):
     aucs = []
     for letter in LETTERS:
         y = (results_df["answer_letter"] == letter).values
@@ -304,7 +305,6 @@ def build_f1_and_auroc_df(results_df, metadata_df, sae_info: SaeInfo):
         precision_probe_best = metrics.precision_score(
             y, pred_probe > best_f1_bias_probe
         )
-
         auc_info = {
             "auc_probe": auc_probe,
             "f1_probe": f1_probe,
@@ -315,8 +315,9 @@ def build_f1_and_auroc_df(results_df, metadata_df, sae_info: SaeInfo):
             "precision_probe_best": precision_probe_best,
             "bias_f1_probe_best": best_f1_bias_probe,
             "letter": letter,
-            "sae_l0": sae_info.l0,
-            "sae_width": sae_info.width,
+            "layer": metadata_df["layer"].iloc[0],
+            "sae_width": metadata_df["sae_width"].iloc[0],
+            "sae_l0": metadata_df["sae_l0"].iloc[0],
         }
 
         for k in KS:
@@ -350,14 +351,14 @@ def build_f1_and_auroc_df(results_df, metadata_df, sae_info: SaeInfo):
             meta_row = metadata_df[
                 (metadata_df["letter"] == letter) & (metadata_df["k"] == k)
             ]
-            auc_info[f"sparse_sae_k_{k}_feats"] = meta_row["feats"].iloc[0]
-            auc_info[f"cos_probe_sae_enc_{letter}_k_{k}"] = meta_row[
-                "cos_probe_sae_enc"
-            ].iloc[0]
-            auc_info[f"cos_probe_sae_dec_{letter}_k_{k}"] = meta_row[
-                "cos_probe_sae_dec"
-            ].iloc[0]
-            auc_info[f"sparse_sae_k_{k}_weights"] = meta_row["weights"].iloc[0]
+            auc_info[f"sparse_sae_k_{k}_feats"] = meta_row["feats"].iloc[0].tolist()
+            auc_info[f"cos_probe_sae_enc_k_{k}"] = (
+                meta_row["cos_probe_sae_enc"].iloc[0].tolist()
+            )
+            auc_info[f"cos_probe_sae_dec_k_{k}"] = (
+                meta_row["cos_probe_sae_dec"].iloc[0].tolist()
+            )
+            auc_info[f"sparse_sae_k_{k}_weights"] = meta_row["weights"].iloc[0].tolist()
             auc_info[f"sparse_sae_k_{k}_bias"] = meta_row["bias"].iloc[0]
             auc_info["layer"] = meta_row["layer"].iloc[0]
             auc_info["sae_width"] = meta_row["sae_width"].iloc[0]
@@ -476,15 +477,12 @@ def run_k_sparse_probing_experiments(
                         force=force,
                     )
 
-                get_raw_results_df()
-                # auroc_results_df = load_df_or_run(
-                #     lambda: build_f1_and_auroc_df(
-                #         *get_raw_results_df(), sae_info=sae_info
-                #     ),
-                #     auroc_results_path,
-                #     force=force,
-                # )
-                # add_feature_splits_to_auroc_f1_df(auroc_results_df, f1_jump_threshold)
-                # results_by_layer[layer].append((auroc_results_df, sae_info))
+                auroc_results_df = load_df_or_run(
+                    lambda: build_f1_and_auroc_df(*get_raw_results_df()),
+                    auroc_results_path,
+                    force=force,
+                )
+                add_feature_splits_to_auroc_f1_df(auroc_results_df, f1_jump_threshold)
+                results_by_layer[layer].append((auroc_results_df, sae_info))
             pbar.update(1)
     return results_by_layer
