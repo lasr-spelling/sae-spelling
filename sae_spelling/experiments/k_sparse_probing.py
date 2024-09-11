@@ -1,6 +1,7 @@
 from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -374,22 +375,26 @@ def add_feature_splits_to_auroc_f1_df(
     df["num_split_features"] = df["split_feats"].apply(len) - 1
 
 
+def _consolidate_results_df(
+    results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+) -> pd.DataFrame:
+    auroc_f1_dfs = []
+    for layer, result in results.items():
+        for auroc_f1_df, _sae_info in result:
+            auroc_f1_df["layer"] = layer
+            auroc_f1_dfs.append(auroc_f1_df)
+    df = pd.concat(auroc_f1_dfs)
+    df["sae_width_str"] = df["sae_width"].map(humanify_sae_width)
+    return df
+
+
 def plot_feature_splits_vs_l0(
     k_sparse_results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
     task: str = "first_letter",
 ):
     task_output_dir = get_task_dir(experiment_dir, task=task)
-
-    auroc_f1_dfs = []
-    for layer, result in k_sparse_results.items():
-        for auroc_f1_df, sae_info in result:
-            auroc_f1_df["layer"] = layer
-            auroc_f1_dfs.append(auroc_f1_df)
-    df = pd.concat(auroc_f1_dfs)
-
-    df["sae_width_str"] = df["sae_width"].map(humanify_sae_width)
-
+    df = _consolidate_results_df(k_sparse_results)
     sns.set_theme()
     plt.rcParams.update({"figure.dpi": 150})
     with plt.rc_context({**bundles.neurips2021(), **axes.lines()}):
@@ -411,6 +416,96 @@ def plot_feature_splits_vs_l0(
         plt.ylabel("Num feature splits")
         plt.tight_layout()
         plt.savefig(task_output_dir / "feature_splitting_vs_l0.pdf")
+        plt.show()
+
+
+def plot_k1_metric_vs_l0(
+    k_sparse_results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+    metric: Literal["f1", "precision", "recall"] = "f1",
+    experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
+    task: str = "first_letter",
+):
+    task_output_dir = get_task_dir(experiment_dir, task=task)
+    df = _consolidate_results_df(k_sparse_results)
+    sns.set_theme()
+    plt.rcParams.update({"figure.dpi": 150})
+    with plt.rc_context({**bundles.neurips2021(), **axes.lines()}):
+        plt.figure(figsize=(3.75, 2.5))
+        sns.scatterplot(
+            df[["layer", "sae_l0", "sae_width_str", f"{metric}_sum_sparse_sae_1"]]
+            .groupby(["layer", "sae_width_str", "sae_l0"])
+            .mean()
+            .reset_index(),
+            x="sae_l0",
+            y=f"{metric}_sum_sparse_sae_1",
+            hue="sae_width_str",
+            s=15,
+            rasterized=True,
+        )
+        plt.legend(title="SAE width", title_fontsize="small")
+        plt.title(f"First-letter SAE {metric} score vs L0")
+        plt.xlabel("L0")
+        plt.ylabel(f"Mean {metric}")
+        plt.tight_layout()
+        plt.savefig(task_output_dir / f"k1_{metric}_vs_l0.pdf")
+        plt.show()
+
+
+def plot_k1_metric_vs_layer(
+    k_sparse_results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+    metric: Literal["f1", "precision", "recall"] = "f1",
+    experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
+    task: str = "first_letter",
+):
+    task_output_dir = get_task_dir(experiment_dir, task=task)
+    df = _consolidate_results_df(k_sparse_results)
+
+    grouped_df = (
+        df[["layer", "sae_l0", "sae_width_str", f"{metric}_sum_sparse_sae_1"]]
+        .groupby(["layer", "sae_width_str", "sae_l0"])
+        .mean()
+        .reset_index()
+    )
+    probe_df = df[["layer", f"{metric}_probe"]].groupby(["layer"]).mean().reset_index()
+
+    sns.set_theme()
+    plt.rcParams.update({"figure.dpi": 150})
+    with plt.rc_context({**bundles.neurips2021(), **axes.lines()}):
+        plt.figure(figsize=(3.75, 2.5))
+        sns.swarmplot(
+            data=grouped_df,
+            x="layer",
+            y=f"{metric}_sum_sparse_sae_1",
+            hue="sae_width_str",
+            size=2,
+        )
+
+        # Add the line plot for probe_df
+        sns.lineplot(
+            data=probe_df,
+            x="layer",
+            y=f"{metric}_probe",
+            color="gray",
+            linewidth=1,
+            marker="o",
+            markersize=3,
+            label="Probe",
+        )
+
+        # Customize the plot
+        plt.title(f"First-letter SAE {metric} score vs Layer")
+        plt.xlabel("Layer")
+        plt.ylabel(f"Mean {metric}")
+        plt.legend(
+            title="SAE width",
+            bbox_to_anchor=(1.05, 1),
+            loc="upper left",
+            title_fontsize="small",
+        )
+
+        # Adjust layout to prevent clipping of the legend
+        plt.tight_layout()
+        plt.savefig(task_output_dir / f"k1_{metric}_vs_layer.pdf")
         plt.show()
 
 
