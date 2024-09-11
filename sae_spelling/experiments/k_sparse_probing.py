@@ -349,7 +349,9 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo):
 
 
 def add_feature_splits_to_auroc_f1_df(
-    df: pd.DataFrame, f1_jump_threshold: float = 0.03, ks=(1, 2, 3, 4, 5)
+    df: pd.DataFrame,
+    f1_jump_threshold: float = 0.03,
+    ks=(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
 ) -> None:
     """
     If a k-sparse probe has a F1 score that increases by `f1_jump_threshold` or more from the previous k-1, consider this to be feature splitting.
