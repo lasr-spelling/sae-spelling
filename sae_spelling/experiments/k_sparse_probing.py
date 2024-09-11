@@ -351,14 +351,10 @@ def build_f1_and_auroc_df(results_df, metadata_df):
             meta_row = metadata_df[
                 (metadata_df["letter"] == letter) & (metadata_df["k"] == k)
             ]
-            auc_info[f"sparse_sae_k_{k}_feats"] = meta_row["feats"].iloc[0].tolist()
-            auc_info[f"cos_probe_sae_enc_k_{k}"] = (
-                meta_row["cos_probe_sae_enc"].iloc[0].tolist()
-            )
-            auc_info[f"cos_probe_sae_dec_k_{k}"] = (
-                meta_row["cos_probe_sae_dec"].iloc[0].tolist()
-            )
-            auc_info[f"sparse_sae_k_{k}_weights"] = meta_row["weights"].iloc[0].tolist()
+            auc_info[f"sparse_sae_k_{k}_feats"] = meta_row["feats"].iloc[0]
+            auc_info[f"cos_probe_sae_enc_k_{k}"] = meta_row["cos_probe_sae_enc"].iloc[0]
+            auc_info[f"cos_probe_sae_dec_k_{k}"] = meta_row["cos_probe_sae_dec"].iloc[0]
+            auc_info[f"sparse_sae_k_{k}_weights"] = meta_row["weights"].iloc[0]
             auc_info[f"sparse_sae_k_{k}_bias"] = meta_row["bias"].iloc[0]
             auc_info["layer"] = meta_row["layer"].iloc[0]
             auc_info["sae_width"] = meta_row["sae_width"].iloc[0]
