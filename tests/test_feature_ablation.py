@@ -1,3 +1,5 @@
+from typing import Sequence
+
 from pytest import approx
 from sae_lens import SAE
 from torch import Tensor
@@ -84,6 +86,41 @@ def test_calculate_individual_feature_ablations_ablates_all_firing_features_by_d
         output.sae_cache.feature_acts[0, -5, :].nonzero().squeeze().tolist()
     )
     assert output.ablation_scores.keys() == set(firing_features)
+
+
+def test_calculate_individual_feature_ablations_allows_modifying_ablation_deltas_with_a_callback(
+    gpt2_model: HookedTransformer, gpt2_l4_sae: SAE
+):
+    assert gpt2_model.tokenizer is not None
+    mary_token = gpt2_model.tokenizer.encode(" Mary")[0]
+
+    def metric_fn(logits: Tensor) -> Tensor:
+        return logits[:, -1, mary_token]
+
+    def modify_fn(deltas: Tensor, features: Sequence[int]) -> Tensor:
+        if 1362 in features:
+            deltas[features.index(1362)] = 0
+        return deltas
+
+    # ablate "John" feature: https://www.neuronpedia.org/gpt2-small/4-res-jb/1362
+    # 1024 is another random feature that activates, but less strongly
+    output = calculate_individual_feature_ablations(
+        gpt2_model,
+        "When John and Mary went to the shops, John gave the bag to",
+        metric_fn=metric_fn,
+        sae=gpt2_l4_sae,
+        ablate_token_index=-5,  # second John index
+        batch_size=10,
+        modify_ablation_deltas_fn=modify_fn,
+    )
+    assert 1362 in output.ablation_scores
+    assert 1024 in output.ablation_scores
+    assert 10 not in output.ablation_scores
+
+    # we disabled the 1362 delta, so it should have 0 ablation effect
+    assert output.ablation_scores[1362] == approx(0.0, abs=1e-5)
+    # 1024 should still have an effect
+    assert abs(output.ablation_scores[1024]) > 0.01
 
 
 def test_calculate_individual_feature_ablations_ignores_features_firing_below_firing_threshold(
