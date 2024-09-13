@@ -350,6 +350,18 @@ def plot_feature_splits_vs_l0(
         plt.show()
 
 
+def get_sparse_probing_raw_results_filename(
+    sae_info: SaeInfo, sae_post_act: bool
+) -> str:
+    return f"layer_{sae_info.layer}_{sae_info.width}_{sae_info.l0}_post_act_{sae_post_act}_raw_results.parquet"
+
+
+def get_sparse_probing_auroc_f1_results_filename(
+    sae_info: SaeInfo, sae_post_act: bool
+) -> str:
+    return f"layer_{sae_info.layer}_{sae_info.width}_{sae_info.l0}_post_act_{sae_post_act}_auroc_f1.parquet"
+
+
 def run_k_sparse_probing_experiments(
     layers: list[int],
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
@@ -375,11 +387,13 @@ def run_k_sparse_probing_experiments(
                     continue
                 raw_results_path = (
                     task_output_dir
-                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_post_act_{sae_post_act}_raw_results.parquet"
+                    / get_sparse_probing_raw_results_filename(sae_info, sae_post_act)
                 )
                 auroc_results_path = (
                     task_output_dir
-                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_post_act_{sae_post_act}_auroc_f1.parquet"
+                    / get_sparse_probing_auroc_f1_results_filename(
+                        sae_info, sae_post_act
+                    )
                 )
 
                 def get_raw_results_df():

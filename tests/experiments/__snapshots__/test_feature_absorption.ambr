@@ -1,0 +1,24 @@
+# serializer version: 1
+# name: test_calculate_ig_ablation_and_cos_sims_gives_sane_results
+  list([
+    'letter',
+    'token',
+    'prompt',
+    'sample_portion',
+    'num_true_positives',
+    'split_feats',
+    'split_feat_acts',
+    'split_feat_probe_cos',
+    'top_ablation_feat',
+    'top_ablation_score',
+    'top_ablation_feat_probe_cos',
+    'second_ablation_feat',
+    'second_ablation_score',
+    'second_ablation_feat_probe_cos',
+    'ablation_scores',
+    'ablation_feats',
+    'ablation_feat_acts',
+    'ablation_feat_probe_cos',
+    'is_absorption',
+  ])
+# ---

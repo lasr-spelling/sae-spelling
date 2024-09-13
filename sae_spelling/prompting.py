@@ -3,6 +3,9 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Callable
 
+VERBOSE_FIRST_LETTER_TEMPLATE = "{word} has the first letter:"
+VERBOSE_FIRST_LETTER_TOKEN_POS = -6
+
 
 @dataclass
 class SpellingPrompt:
