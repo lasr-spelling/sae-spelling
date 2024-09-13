@@ -523,6 +523,18 @@ def plot_k1_metric_vs_layer(
         plt.show()
 
 
+def get_sparse_probing_raw_results_filename(sae_info: SaeInfo) -> str:
+    return f"layer_{sae_info.layer}_{sae_info.width}_{sae_info.l0}_raw_results.parquet"
+
+
+def get_sparse_probing_metadata_filename(sae_info: SaeInfo) -> str:
+    return f"layer_{sae_info.layer}_{sae_info.width}_{sae_info.l0}_metadata.parquet"
+
+
+def get_sparse_probing_auroc_f1_results_filename(sae_info: SaeInfo) -> str:
+    return f"layer_{sae_info.layer}_{sae_info.width}_{sae_info.l0}_auroc_f1.parquet"
+
+
 def run_k_sparse_probing_experiments(
     layers: list[int],
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
@@ -546,16 +558,14 @@ def run_k_sparse_probing_experiments(
                 if skip_1m_saes and sae_info.width == 1_000_000:
                     continue
                 raw_results_path = (
-                    task_output_dir
-                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_raw_results.parquet"
+                    task_output_dir / get_sparse_probing_raw_results_filename(sae_info)
                 )
                 metadata_results_path = (
-                    task_output_dir
-                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_metadata.parquet"
+                    task_output_dir / get_sparse_probing_metadata_filename(sae_info)
                 )
-                auroc_results_path = (  # noqa: F841
+                auroc_results_path = (
                     task_output_dir
-                    / f"layer_{layer}_{sae_info.width}_{sae_info.l0}_auroc_f1.parquet"
+                    / get_sparse_probing_auroc_f1_results_filename(sae_info)
                 )
 
                 def get_raw_results_df():

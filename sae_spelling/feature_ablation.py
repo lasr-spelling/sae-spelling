@@ -35,6 +35,8 @@ def calculate_individual_feature_ablations(
     batch_size: int = 25,
     show_progress: bool = False,
     firing_threshold: float = EPS,
+    modify_ablation_deltas_fn: Callable[[torch.Tensor, Sequence[int]], torch.Tensor]
+    | None = None,
     # TODO: support not including the error term
 ) -> FeatureAblationsOutput:
     """
@@ -82,6 +84,8 @@ def calculate_individual_feature_ablations(
             0, ablate_token_index, batch
         ]
         batch_deltas = -1 * feature_vals.unsqueeze(-1) * sae.W_dec[batch]
+        if modify_ablation_deltas_fn is not None:
+            batch_deltas = modify_ablation_deltas_fn(batch_deltas, batch)
 
         def ablation_hook(value: torch.Tensor, hook: HookPoint):  # noqa: ARG001
             value[:, ablate_token_index, :] += batch_deltas
