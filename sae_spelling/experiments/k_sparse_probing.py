@@ -74,6 +74,7 @@ def train_sparse_multi_probe(
     show_progress: bool = True,
     verbose: bool = False,
     device: torch.device = DEFAULT_DEVICE,
+    bias: bool = True,
 ) -> LinearProbe:
     """
     Train a multi-probe with L1 regularization on the weights.
@@ -92,6 +93,7 @@ def train_sparse_multi_probe(
         device=device,
         extra_loss_fn=lambda probe, _x, _y: l1_decay
         * probe.weights.abs().sum(dim=-1).mean(),
+        bias=bias,
     )
 
 
@@ -114,6 +116,7 @@ def train_k_sparse_probes(
     train_labels: list[tuple[str, int]],  # list of (token, letter number) pairs
     train_activations: torch.Tensor,  # n_vocab X d_model
     ks: Sequence[int] = KS,
+    bias: bool = True,
 ) -> dict[int, dict[int, KSparseProbe]]:  # dict[k, dict[letter_id, probe]]
     """
     Train k-sparse probes for each k in ks.
@@ -133,6 +136,7 @@ def train_k_sparse_probes(
             l1_decay=0.01,
             num_epochs=50,
             device=sae.device,
+            bias=bias,
         )
         .float()
         .cpu()
@@ -147,7 +151,7 @@ def train_k_sparse_probes(
                     train_k_x = sae_feat_acts[:, sparse_feat_ids].float().numpy()
                     # Use SKLearn here because it's much faster than torch if the data is small
                     sk_probe = LogisticRegression(
-                        max_iter=500, class_weight="balanced"
+                        max_iter=500, class_weight="balanced", fit_intercept=bias
                     ).fit(train_k_x, (train_k_y == label).astype(np.int64))
                     probe = KSparseProbe(
                         weight=torch.tensor(sk_probe.coef_[0]).float(),
@@ -247,6 +251,7 @@ def eval_probe_and_sae_k_sparse_raw_scores(
 def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
     sae_info: SaeInfo,
     tokenizer: PreTrainedTokenizerFast,
+    bias: bool,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     with torch.no_grad():
         sae = load_gemmascope_sae(
@@ -266,6 +271,7 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
         sae,
         train_data,
         train_activations,
+        bias=bias,
     )
     with torch.no_grad():
         eval_activations, eval_data = load_probe_data_split(
@@ -542,6 +548,7 @@ def run_k_sparse_probing_experiments(
     force: bool = False,
     skip_1m_saes: bool = False,
     f1_jump_threshold: float = 0.03,  # noqa: ARG001
+    bias: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     task_output_dir = get_task_dir(experiment_dir, task=task)
 
@@ -571,7 +578,7 @@ def run_k_sparse_probing_experiments(
                 def get_raw_results_df():
                     return load_dfs_or_run(
                         lambda: load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
-                            sae_info, tokenizer
+                            sae_info, tokenizer, bias=bias
                         ),
                         (raw_results_path, metadata_results_path),
                         force=force,

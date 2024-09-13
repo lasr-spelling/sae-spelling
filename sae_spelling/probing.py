@@ -26,9 +26,9 @@ class LinearProbe(nn.Module):
     Based on by https://github.com/jbloomAus/alphabetical_probe/blob/main/src/probes.py
     """
 
-    def __init__(self, input_dim, num_outputs: int = 1):
+    def __init__(self, input_dim, num_outputs: int = 1, bias: bool = True):
         super().__init__()
-        self.fc = nn.Linear(input_dim, num_outputs)
+        self.fc = nn.Linear(input_dim, num_outputs, bias=bias)
 
     def forward(self, x):
         return self.fc(x)
@@ -63,6 +63,7 @@ def train_multi_probe(
     | None = None,
     verbose: bool = False,
     device: torch.device = DEFAULT_DEVICE,
+    bias: bool = True,
 ) -> LinearProbe:
     """
     Train a multi-class one-vs-rest logistic regression probe on the given data.
@@ -83,7 +84,7 @@ def train_multi_probe(
     num_probes = num_probes or y_train.shape[-1]
     dataset = TensorDataset(x_train.to(device), y_train.to(device, dtype=dtype))
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    probe = LinearProbe(x_train.shape[-1], num_outputs=num_probes).to(
+    probe = LinearProbe(x_train.shape[-1], num_outputs=num_probes, bias=bias).to(
         device, dtype=dtype
     )
 
