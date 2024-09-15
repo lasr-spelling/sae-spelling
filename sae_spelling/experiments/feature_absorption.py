@@ -76,7 +76,7 @@ def calculate_ig_ablation_and_cos_sims(
     sae: SAE,
     probe: LinearProbe,
     likely_negs: dict[str, StatsAndLikelyFalseNegativeResults],
-    max_prompts_per_letter: int = 50,
+    max_prompts_per_letter: int = 200,
 ) -> pd.DataFrame:
     results = []
     for letter, (
