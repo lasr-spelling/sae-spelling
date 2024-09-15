@@ -4,6 +4,7 @@ from syrupy.assertion import SnapshotAssertion
 
 from sae_spelling.experiments.k_sparse_probing import (
     _get_sae_acts,
+    calculate_sparse_mean_diff_weights,
     eval_probe_and_sae_k_sparse_raw_scores,
     train_k_sparse_probes,
     train_sparse_multi_probe,
@@ -77,3 +78,178 @@ def test_eval_probe_and_sae_k_sparse_raw_scores_gives_sane_results(
         eval_activations,
     )
     assert df.columns.values.tolist() == snapshot
+
+
+def test_calculate_sparse_mean_diff_weights_simple():
+    x_train = torch.tensor(
+        [
+            [1.0, 2.0],
+            [3.0, 4.0],
+            [5.0, 6.0],
+            [7.0, 8.0],
+        ]
+    )  # shape (4, 2)
+    y_train = torch.tensor(
+        [
+            [1, 0],
+            [0, 1],
+            [1, 0],
+            [0, 1],
+        ]
+    )  # shape (4, 2)
+
+    output = calculate_sparse_mean_diff_weights(
+        x_train=x_train,
+        y_train=y_train,
+        batch_size=2,
+        show_progress=False,
+    )
+
+    assert torch.allclose(
+        output,
+        torch.tensor(
+            [
+                [-2.0, -2.0],
+                [2.0, 2.0],
+            ]
+        ),
+    )
+
+
+def test_calculate_sparse_mean_diff_weights_multiple_classes():
+    x_train = torch.tensor(
+        [
+            [1.0, 20.0],
+            [2.0, 30.0],
+            [3.0, 40.0],
+            [4.0, 50.0],
+        ]
+    )  # shape (4, 2)
+    y_train = torch.tensor(
+        [
+            [1, 0, 0],
+            [0, 1, 0],
+            [1, 0, 1],
+            [0, 1, 1],
+        ]
+    )  # shape (4, 3)
+
+    output = calculate_sparse_mean_diff_weights(
+        x_train=x_train,
+        y_train=y_train,
+        batch_size=2,
+        show_progress=False,
+    )
+    assert torch.allclose(
+        output,
+        torch.tensor(
+            [
+                [-1.0, -10.0],
+                [1.0, 10.0],
+                [2.0, 20.0],
+            ]
+        ),
+    )
+
+
+def test_calculate_sparse_mean_diff_weights_all_ones():
+    # All samples belong to all positive classes
+    x_train = torch.tensor(
+        [
+            [1.0, 2.0],
+            [3.0, 4.0],
+        ]
+    )  # shape (2, 2)
+
+    y_train = torch.tensor(
+        [
+            [1, 1],
+            [1, 1],
+        ]
+    )  # shape (2, 2)
+
+    output = calculate_sparse_mean_diff_weights(
+        x_train=x_train,
+        y_train=y_train,
+        batch_size=1,
+        show_progress=False,
+    )
+    # It should be assumed that the negative mean is 0 if there are no negative examples
+    assert torch.allclose(
+        output,
+        torch.tensor(
+            [
+                [2.0, 3.0],
+                [2.0, 3.0],
+            ]
+        ),
+    )
+
+
+def test_calculate_sparse_mean_diff_weights_all_zeros():
+    # No samples belong to any positive class
+    x_train = torch.tensor(
+        [
+            [1.0, 2.0],
+            [3.0, 4.0],
+        ]
+    )  # shape (2, 2)
+
+    y_train = torch.tensor(
+        [
+            [0, 0],
+            [0, 0],
+        ]
+    )  # shape (2, 2)
+
+    output = calculate_sparse_mean_diff_weights(
+        x_train=x_train,
+        y_train=y_train,
+        batch_size=1,
+        show_progress=False,
+    )
+
+    # It should be assumed that the positive mean is 0 if there are no positive examples
+    assert torch.allclose(
+        output,
+        torch.tensor(
+            [
+                [-2.0, -3.0],
+                [-2.0, -3.0],
+            ]
+        ),
+    )
+
+
+def test_calculate_sparse_mean_diff_weights_with_unbalanced_classes():
+    # Test with a class that has no positive samples
+    x_train = torch.tensor(
+        [
+            [1.0, 20.0],
+            [2.0, 30.0],
+            [3.0, 40.0],
+        ]
+    )  # shape (3, 2)
+    y_train = torch.tensor(
+        [
+            [1, 0],
+            [1, 1],
+            [0, 0],
+        ]
+    )  # shape (3, 2), second class has no positive samples
+
+    output = calculate_sparse_mean_diff_weights(
+        x_train=x_train,
+        y_train=y_train,
+        batch_size=2,
+        show_progress=False,
+    )
+    assert torch.allclose(
+        output,
+        torch.tensor(
+            [
+                [-1.5, -15.0],
+                [0.0, 0.0],
+            ]
+        ),
+    )

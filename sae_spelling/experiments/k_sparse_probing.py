@@ -32,7 +32,7 @@ from sae_spelling.probing import LinearProbe, train_multi_probe
 from sae_spelling.util import DEFAULT_DEVICE, batchify
 from sae_spelling.vocab import LETTERS
 
-EPS = 1e-6
+EPS = 1e-8
 KS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 50)
 SPARSE_PROBING_EXPERIMENT_NAME = "k_sparse_probing"
 
@@ -59,6 +59,45 @@ class KSparseProbe(nn.Module):
             x[:, self.feature_ids] if len(x.shape) == 2 else x[self.feature_ids]
         )
         return filtered_acts @ self.weight + self.bias
+
+
+@torch.inference_mode()
+def calculate_sparse_mean_diff_weights(
+    x_train: torch.Tensor,  # tensor of shape (num_samples, input_dim)
+    y_train: torch.Tensor,  # tensor of shape (num_samples, num_classes), with values in [0, 1]
+    batch_size: int = 4096,
+    show_progress: bool = True,
+    device: torch.device = DEFAULT_DEVICE,
+) -> torch.Tensor:  # tensor of shape (num_classes, input_dim)
+    pos_batch_means: list[torch.Tensor] = []
+    neg_batch_means: list[torch.Tensor] = []
+    pos_batch_sizes = []
+    neg_batch_sizes = []
+    for batch_indices in batchify(
+        range(x_train.shape[0]), batch_size, show_progress=show_progress
+    ):
+        batch_x = x_train[batch_indices].to(device)
+        batch_y = y_train[batch_indices].to(device=device, dtype=batch_x.dtype)
+        pos_batch_sizes.append(batch_y.sum(dim=0))
+        neg_batch_sizes.append((1 - batch_y).sum(dim=0))
+        pos_batch_means.append(
+            torch.einsum("bd,bc->cd", batch_x, batch_y)
+            / (batch_y.sum(dim=0).unsqueeze(-1) + EPS)
+        )
+        neg_batch_means.append(
+            torch.einsum("bd,bc->cd", batch_x, 1 - batch_y)
+            / ((1 - batch_y).sum(dim=0).unsqueeze(-1) + EPS)
+        )
+
+    pos_batch_weights = (
+        torch.stack(pos_batch_sizes) / (y_train + EPS).sum(dim=0)
+    ).unsqueeze(-1)
+    neg_batch_weights = (
+        torch.stack(neg_batch_sizes) / (1 - y_train + EPS).sum(dim=0)
+    ).unsqueeze(-1)
+    pos_mean = (torch.stack(pos_batch_means) * pos_batch_weights).sum(dim=0)
+    neg_mean = (torch.stack(neg_batch_means) * neg_batch_weights).sum(dim=0)
+    return pos_mean - neg_mean
 
 
 def train_sparse_multi_probe(
