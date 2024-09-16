@@ -552,7 +552,9 @@ def run_k_sparse_probing_experiments(
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = False,
+    skip_32k_saes: bool = False,
     skip_262k_saes: bool = False,
+    skip_524k_saes: bool = False,
     f1_jump_threshold: float = 0.03,  # noqa: ARG001
     verbose: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
@@ -568,16 +570,16 @@ def run_k_sparse_probing_experiments(
             results_by_layer[layer] = []
             sae_infos = get_gemmascope_saes_info(layer)
             for sae_info in sae_infos:
-                if verbose:
-                    print(f"Running SAE {sae_info}", flush=True)
                 if skip_1m_saes and sae_info.width == 1_000_000:
-                    if verbose:
-                        print("Skipping 1M SAE", flush=True)
+                    continue
+                if skip_32k_saes and sae_info.width == 32_000:
                     continue
                 if skip_262k_saes and sae_info.width == 262_000:
-                    if verbose:
-                        print("Skipping 262k SAE", flush=True)
                     continue
+                if skip_524k_saes and sae_info.width == 524_000:
+                    continue
+                if verbose:
+                    print(f"Running SAE {sae_info}", flush=True)
                 raw_results_path = (
                     task_output_dir / get_sparse_probing_raw_results_filename(sae_info)
                 )

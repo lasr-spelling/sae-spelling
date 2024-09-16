@@ -305,6 +305,9 @@ def run_feature_absortion_experiments(
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = False,
+    skip_32k_saes: bool = False,
+    skip_262k_saes: bool = False,
+    skip_524k_saes: bool = False,
     feature_split_f1_jump_threshold: float = 0.03,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     """
@@ -337,6 +340,12 @@ def run_feature_absortion_experiments(
             sae_infos = get_gemmascope_saes_info(layer)
             for sae_info in sae_infos:
                 if skip_1m_saes and sae_info.width == 1_000_000:
+                    continue
+                if skip_32k_saes and sae_info.width == 32_000:
+                    continue
+                if skip_262k_saes and sae_info.width == 262_000:
+                    continue
+                if skip_524k_saes and sae_info.width == 524_000:
                     continue
                 auroc_f1_df = load_experiment_df(
                     SPARSE_PROBING_EXPERIMENT_NAME,

@@ -296,6 +296,9 @@ def run_encoder_auroc_and_f1_experiments(
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = False,
+    skip_32k_saes: bool = False,
+    skip_262k_saes: bool = False,
+    skip_524k_saes: bool = False,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     task_output_dir = get_task_dir(experiment_dir, task=task)
 
@@ -310,6 +313,12 @@ def run_encoder_auroc_and_f1_experiments(
             sae_infos = get_gemmascope_saes_info(layer)
             for sae_info in sae_infos:
                 if skip_1m_saes and sae_info.width == 1_000_000:
+                    continue
+                if skip_32k_saes and sae_info.width == 32_000:
+                    continue
+                if skip_262k_saes and sae_info.width == 262_000:
+                    continue
+                if skip_524k_saes and sae_info.width == 524_000:
                     continue
                 raw_results_path = (
                     task_output_dir
