@@ -247,6 +247,7 @@ def eval_probe_and_sae_k_sparse_raw_scores(
 def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
     sae_info: SaeInfo,
     tokenizer: PreTrainedTokenizerFast,
+    verbose: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     with torch.no_grad():
         sae = load_gemmascope_sae(
@@ -254,6 +255,8 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
             l0=sae_info.l0,
             width=sae_info.width,
         )
+        if verbose:
+            print("Loading probe and training data", flush=True)
         probe = load_probe(task="first_letter", layer=sae_info.layer)
         train_activations, train_data = load_probe_data_split(
             tokenizer,
@@ -262,12 +265,16 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
             split="train",
             device="cpu",
         )
+    if verbose:
+        print("Training k-sparse probes", flush=True)
     k_sparse_probes = train_k_sparse_probes(
         sae,
         train_data,
         train_activations,
     )
     with torch.no_grad():
+        if verbose:
+            print("Loading validation data", flush=True)
         eval_activations, eval_data = load_probe_data_split(
             tokenizer,
             task="first_letter",
@@ -275,6 +282,8 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
             split="test",
             device="cpu",
         )
+        if verbose:
+            print("Evaluating raw k-sparse probing scores", flush=True)
         df = eval_probe_and_sae_k_sparse_raw_scores(
             sae,
             probe,
@@ -282,6 +291,8 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
             eval_labels=eval_data,
             eval_activations=eval_activations,
         )
+        if verbose:
+            print("Building metadata", flush=True)
         metadata = sae_k_sparse_metadata(
             sae,
             probe,
@@ -542,6 +553,7 @@ def run_k_sparse_probing_experiments(
     force: bool = False,
     skip_1m_saes: bool = False,
     f1_jump_threshold: float = 0.03,  # noqa: ARG001
+    verbose: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     task_output_dir = get_task_dir(experiment_dir, task=task)
 
@@ -555,7 +567,11 @@ def run_k_sparse_probing_experiments(
             results_by_layer[layer] = []
             sae_infos = get_gemmascope_saes_info(layer)
             for sae_info in sae_infos:
+                if verbose:
+                    print(f"Running SAE {sae_info}", flush=True)
                 if skip_1m_saes and sae_info.width == 1_000_000:
+                    if verbose:
+                        print("Skipping 1M SAE", flush=True)
                     continue
                 raw_results_path = (
                     task_output_dir / get_sparse_probing_raw_results_filename(sae_info)
@@ -571,7 +587,7 @@ def run_k_sparse_probing_experiments(
                 def get_raw_results_df():
                     return load_dfs_or_run(
                         lambda: load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
-                            sae_info, tokenizer
+                            sae_info, tokenizer, verbose=verbose
                         ),
                         (raw_results_path, metadata_results_path),
                         force=force,
