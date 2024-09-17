@@ -1,5 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -201,8 +202,9 @@ def _consolidate_results_df(
     return df
 
 
-def plot_f1_vs_l0(
+def plot_metric_vs_l0(
     results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+    metric: Literal["f1", "precision", "recall"] = "f1",
     experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
     task: str = "first_letter",
 ):
@@ -214,27 +216,28 @@ def plot_f1_vs_l0(
     with plt.rc_context({**bundles.neurips2021(), **axes.lines()}):
         plt.figure(figsize=(3.75, 2.5))
         sns.scatterplot(
-            df[["layer", "sae_l0", "sae_width_str", "f1_sae_top_0"]]
+            df[["layer", "sae_l0", "sae_width_str", f"{metric}_sae_top_0"]]
             .groupby(["layer", "sae_width_str", "sae_l0"])
             .mean()
             .reset_index(),
             x="sae_l0",
-            y="f1_sae_top_0",
+            y=f"{metric}_sae_top_0",
             hue="sae_width_str",
             s=15,
             rasterized=True,
         )
         plt.legend(title="SAE width", title_fontsize="small")
-        plt.title("First-letter SAE F1 score vs L0")
+        plt.title(f"First-letter SAE {metric} vs L0")
         plt.xlabel("L0")
-        plt.ylabel("Mean F1")
+        plt.ylabel(f"Mean {metric}")
         plt.tight_layout()
-        plt.savefig(task_output_dir / "f1_vs_l0.pdf")
+        plt.savefig(task_output_dir / f"{metric}_vs_l0.pdf")
         plt.show()
 
 
-def plot_f1_vs_layer(
+def plot_metric_vs_layer(
     results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
+    metric: Literal["f1", "precision", "recall"] = "f1",
     experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
     task: str = "first_letter",
 ):
@@ -242,7 +245,7 @@ def plot_f1_vs_layer(
     df = _consolidate_results_df(results)
 
     grouped_df = (
-        df[["layer", "sae_l0", "sae_width_str", "f1_sae_top_0"]]
+        df[["layer", "sae_l0", "sae_width_str", f"{metric}_sae_top_0"]]
         .groupby(["layer", "sae_width_str", "sae_l0"])
         .mean()
         .reset_index()
@@ -256,7 +259,7 @@ def plot_f1_vs_layer(
         sns.swarmplot(
             data=grouped_df,
             x="layer",
-            y="f1_sae_top_0",
+            y=f"{metric}_sae_top_0",
             hue="sae_width_str",
             size=2,
         )
@@ -274,9 +277,9 @@ def plot_f1_vs_layer(
         )
 
         # Customize the plot
-        plt.title("First-letter SAE F1 score vs Layer")
+        plt.title(f"First-letter SAE {metric} vs Layer")
         plt.xlabel("Layer")
-        plt.ylabel("Mean F1")
+        plt.ylabel(f"Mean {metric}")
         plt.legend(
             title="SAE width",
             bbox_to_anchor=(1.05, 1),
@@ -286,7 +289,7 @@ def plot_f1_vs_layer(
 
         # Adjust layout to prevent clipping of the legend
         plt.tight_layout()
-        plt.savefig(task_output_dir / "f1_vs_layer.pdf")
+        plt.savefig(task_output_dir / f"{metric}_vs_layer.pdf")
         plt.show()
 
 
