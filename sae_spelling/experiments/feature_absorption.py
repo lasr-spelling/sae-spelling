@@ -309,6 +309,7 @@ def run_feature_absortion_experiments(
     skip_262k_saes: bool = False,
     skip_524k_saes: bool = False,
     feature_split_f1_jump_threshold: float = 0.03,
+    verbose: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     """
     NOTE: this experiments requires the results of the k-sparse probing experiments. Make sure to run them first.
@@ -347,6 +348,8 @@ def run_feature_absortion_experiments(
                     continue
                 if skip_524k_saes and sae_info.width == 524_000:
                     continue
+                if verbose:
+                    print(f"Running SAE {sae_info}", flush=True)
                 auroc_f1_df = load_experiment_df(
                     SPARSE_PROBING_EXPERIMENT_NAME,
                     sparse_probing_task_output_dir
