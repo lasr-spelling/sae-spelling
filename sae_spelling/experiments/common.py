@@ -164,6 +164,9 @@ def get_gemmascope_saes_info(layer: int | None = None) -> list[SaeInfo]:
         layer_match = re.search(r"layer_(\d+)", sae_name)
         assert layer_match is not None
         sae_layer = int(layer_match.group(1))
+        # this SAE is missing, see https://github.com/jbloomAus/SAELens/pull/293. Just skip it.
+        if layer == 11 and l0 == 79:
+            continue
         if layer is None or sae_layer == layer:
             saes.append(SaeInfo(l0, sae_layer, width, sae_path))
     return saes
