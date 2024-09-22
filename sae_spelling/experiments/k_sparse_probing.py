@@ -551,10 +551,10 @@ def run_k_sparse_probing_experiments(
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
     task: str = "first_letter",
     force: bool = False,
-    skip_1m_saes: bool = False,
-    skip_32k_saes: bool = False,
-    skip_262k_saes: bool = False,
-    skip_524k_saes: bool = False,
+    skip_1m_saes: bool = True,
+    skip_32k_saes: bool = True,
+    skip_262k_saes: bool = True,
+    skip_524k_saes: bool = True,
     f1_jump_threshold: float = 0.03,  # noqa: ARG001
     verbose: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:

@@ -1,6 +1,6 @@
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -47,8 +47,10 @@ ABSORPTION_PROBE_COS_THRESHOLD = 0.025
 ABSORPTION_FEATURE_DELTA_THRESHOLD = 1.0
 
 
-class StatsAndLikelyFalseNegativeResults(NamedTuple):
-    num_true_positives: int
+@dataclass
+class StatsAndLikelyFalseNegativeResults:
+    probe_true_positives: int
+    split_feats_true_positives: int
     split_feats: list[int]
     potential_false_negatives: list[str]
 
@@ -79,18 +81,14 @@ def calculate_ig_ablation_and_cos_sims(
     max_prompts_per_letter: int = 200,
 ) -> pd.DataFrame:
     results = []
-    for letter, (
-        num_true_positives,
-        split_feats,
-        words,
-    ) in tqdm(likely_negs.items()):
+    for letter, stats in tqdm(likely_negs.items()):
         assert calculator.model.tokenizer is not None
         absorption_results = calculator.calculate_absorption_sampled(
             sae,
-            words=words,
+            words=stats.potential_false_negatives,
             probe_dir=probe.weights[LETTERS.index(letter)],
             metric_fn=letter_delta_metric(calculator.model.tokenizer, letter),
-            main_feature_ids=split_feats,
+            main_feature_ids=stats.split_feats,
             max_ablation_samples=max_prompts_per_letter,
             show_progress=False,
         )
@@ -102,8 +100,8 @@ def calculate_ig_ablation_and_cos_sims(
                 "token": sample.word,
                 "prompt": sample.prompt,
                 "sample_portion": absorption_results.sample_portion,
-                "num_true_positives": num_true_positives,
-                "split_feats": split_feats,
+                "num_probe_true_positives": stats.probe_true_positives,
+                "split_feats": stats.split_feats,
                 "split_feat_acts": [
                     score.activation for score in sample.main_feature_scores
                 ],
@@ -159,13 +157,19 @@ def get_stats_and_likely_false_negative_tokens(
             & (raw_df[f"score_probe_{letter}"] > 0)
             & (raw_df[f"score_sparse_sae_{letter}_k_{k}"] <= 0)
         ]["token"].tolist()
-        num_true_positives = raw_df[
+        num_split_feats_true_positives = raw_df[
             (raw_df["answer_letter"] == letter)
             & (raw_df[f"score_probe_{letter}"] > 0)
             & (raw_df[f"score_sparse_sae_{letter}_k_{k}"] > 0)
         ].shape[0]
+        num_probe_true_positives = raw_df[
+            (raw_df["answer_letter"] == letter) & (raw_df[f"score_probe_{letter}"] > 0)
+        ].shape[0]
         results[letter] = StatsAndLikelyFalseNegativeResults(
-            num_true_positives, split_feats, potential_false_negatives
+            probe_true_positives=num_probe_true_positives,
+            split_feats_true_positives=num_split_feats_true_positives,
+            split_feats=split_feats,
+            potential_false_negatives=potential_false_negatives,
         )
     return results
 
@@ -191,8 +195,8 @@ def _aggregate_results_df(
     results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
 ) -> pd.DataFrame:
     combined = []
-    for layer, result in results.items():
-        for df, sae_info in result:
+    for layer_results in results.values():
+        for df, sae_info in layer_results:
             if "sample_portion" not in df.columns:
                 df["sample_portion"] = 1.0
             agg_df = (
@@ -201,7 +205,7 @@ def _aggregate_results_df(
                 .sum()
                 .reset_index()
                 .merge(
-                    df[["letter", "sample_portion", "num_true_positives"]]
+                    df[["letter", "sample_portion", "num_probe_true_positives"]]
                     .groupby(["letter"])
                     .mean()
                     .reset_index()
@@ -210,8 +214,8 @@ def _aggregate_results_df(
             agg_df["num_absorption"] = (
                 agg_df["is_absorption"] / agg_df["sample_portion"]
             )
-            agg_df["absorption_rate"] = agg_df["num_absorption"] / (
-                agg_df["num_absorption"] + agg_df["num_true_positives"]
+            agg_df["absorption_rate"] = (
+                agg_df["num_absorption"] / agg_df["num_probe_true_positives"]
             )
             agg_df["layer"] = sae_info.layer
             agg_df["sae_width"] = sae_info.width
@@ -304,10 +308,10 @@ def run_feature_absortion_experiments(
     / SPARSE_PROBING_EXPERIMENT_NAME,
     task: str = "first_letter",
     force: bool = False,
-    skip_1m_saes: bool = False,
-    skip_32k_saes: bool = False,
-    skip_262k_saes: bool = False,
-    skip_524k_saes: bool = False,
+    skip_1m_saes: bool = True,
+    skip_32k_saes: bool = True,
+    skip_262k_saes: bool = True,
+    skip_524k_saes: bool = True,
     feature_split_f1_jump_threshold: float = 0.03,
     verbose: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:

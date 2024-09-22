@@ -207,9 +207,17 @@ def plot_metric_vs_l0(
     metric: Literal["f1", "precision", "recall"] = "f1",
     experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
     task: str = "first_letter",
+    layers_range: tuple[int, int] | None = None,
 ):
     task_output_dir = get_task_dir(experiment_dir, task=task)
     df = _consolidate_results_df(results)
+
+    title = f"First-letter SAE {metric} vs L0"
+    save_file_base = f"{metric}_vs_l0"
+    if layers_range is not None:
+        df = df[df["layer"].between(*layers_range)]
+        title += f" (layers {layers_range[0]}-{layers_range[1] - 1})"
+        save_file_base += f"_layers_{layers_range[0]}_{layers_range[1] - 1}"
 
     sns.set_theme()
     plt.rcParams.update({"figure.dpi": 150})
@@ -217,7 +225,7 @@ def plot_metric_vs_l0(
         plt.figure(figsize=(3.75, 2.5))
         sns.scatterplot(
             df[["layer", "sae_l0", "sae_width_str", f"{metric}_sae_top_0"]]
-            .groupby(["layer", "sae_width_str", "sae_l0"])
+            .groupby(["layer", "sae_width_str", "sae_l0"])  # type: ignore
             .mean()
             .reset_index(),
             x="sae_l0",
@@ -227,11 +235,11 @@ def plot_metric_vs_l0(
             rasterized=True,
         )
         plt.legend(title="SAE width", title_fontsize="small")
-        plt.title(f"First-letter SAE {metric} vs L0")
+        plt.title(title)
         plt.xlabel("L0")
         plt.ylabel(f"Mean {metric}")
         plt.tight_layout()
-        plt.savefig(task_output_dir / f"{metric}_vs_l0.pdf")
+        plt.savefig(task_output_dir / f"{save_file_base}.pdf")
         plt.show()
 
 
@@ -276,6 +284,14 @@ def plot_metric_vs_layer(
             label="Probe",
         )
 
+        current_ticks = plt.gca().get_xticks()
+        if len(current_ticks) > 20:
+            # Select every other tick
+            current_labels = [int(tick) for tick in current_ticks]
+            new_ticks = current_ticks[::2]
+            new_labels = current_labels[::2]
+            plt.xticks(new_ticks, new_labels)  # type: ignore
+
         # Customize the plot
         plt.title(f"First-letter SAE {metric} vs Layer")
         plt.xlabel("Layer")
@@ -298,10 +314,10 @@ def run_encoder_auroc_and_f1_experiments(
     experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
     task: str = "first_letter",
     force: bool = False,
-    skip_1m_saes: bool = False,
-    skip_32k_saes: bool = False,
-    skip_262k_saes: bool = False,
-    skip_524k_saes: bool = False,
+    skip_1m_saes: bool = True,
+    skip_32k_saes: bool = True,
+    skip_262k_saes: bool = True,
+    skip_524k_saes: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
     task_output_dir = get_task_dir(experiment_dir, task=task)
 
