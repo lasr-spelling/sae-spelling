@@ -2,7 +2,7 @@ import torch
 from sae_lens import SAE
 from syrupy.assertion import SnapshotAssertion
 
-from sae_spelling.experiments.encoder_auroc_and_f1 import (
+from sae_spelling.experiments.latent_evaluation import (
     eval_probe_and_top_sae_raw_scores,
 )
 from sae_spelling.probing import LinearProbe

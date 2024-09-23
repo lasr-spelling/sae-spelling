@@ -10,6 +10,10 @@ from transformers import PreTrainedModel, PreTrainedTokenizerFast, set_seed
 from sae_spelling.prompting import create_icl_prompt, spelling_formatter
 from sae_spelling.vocab import get_alpha_tokens
 
+###
+# NOTE: this is never used in the paper. Just keeping here for reference.
+###
+
 
 @dataclass
 class BaselineResult:

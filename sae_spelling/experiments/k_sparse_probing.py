@@ -17,6 +17,7 @@ from tueplots import axes, bundles
 
 from sae_spelling.experiments.common import (
     EXPERIMENTS_DIR,
+    PROBES_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
     get_task_dir,
@@ -27,7 +28,6 @@ from sae_spelling.experiments.common import (
     load_probe,
     load_probe_data_split,
 )
-from sae_spelling.experiments.encoder_auroc_and_f1 import find_optimal_f1_threshold
 from sae_spelling.probing import LinearProbe, train_multi_probe
 from sae_spelling.util import DEFAULT_DEVICE, batchify
 from sae_spelling.vocab import LETTERS
@@ -247,6 +247,7 @@ def eval_probe_and_sae_k_sparse_raw_scores(
 def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
     sae_info: SaeInfo,
     tokenizer: PreTrainedTokenizerFast,
+    probes_dir: Path | str,
     verbose: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     with torch.no_grad():
@@ -257,9 +258,12 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
         )
         if verbose:
             print("Loading probe and training data", flush=True)
-        probe = load_probe(task="first_letter", layer=sae_info.layer)
+        probe = load_probe(
+            task="first_letter", layer=sae_info.layer, probes_dir=probes_dir
+        )
         train_activations, train_data = load_probe_data_split(
             tokenizer,
+            probes_dir=probes_dir,
             task="first_letter",
             layer=sae_info.layer,
             split="train",
@@ -277,6 +281,7 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
             print("Loading validation data", flush=True)
         eval_activations, eval_data = load_probe_data_split(
             tokenizer,
+            probes_dir=probes_dir,
             task="first_letter",
             layer=sae_info.layer,
             split="test",
@@ -311,20 +316,11 @@ def build_f1_and_auroc_df(results_df, metadata_df):
         f1_probe = metrics.f1_score(y, pred_probe > 0.0)
         recall_probe = metrics.recall_score(y, pred_probe > 0.0)
         precision_probe = metrics.precision_score(y, pred_probe > 0.0)
-        best_f1_bias_probe, f1_probe = find_optimal_f1_threshold(y, pred_probe)
-        recall_probe_best = metrics.recall_score(y, pred_probe > best_f1_bias_probe)
-        precision_probe_best = metrics.precision_score(
-            y, pred_probe > best_f1_bias_probe
-        )
         auc_info = {
             "auc_probe": auc_probe,
             "f1_probe": f1_probe,
-            "f1_probe_best": f1_probe,
             "recall_probe": recall_probe,
             "precision_probe": precision_probe,
-            "recall_probe_best": recall_probe_best,
-            "precision_probe_best": precision_probe_best,
-            "bias_f1_probe_best": best_f1_bias_probe,
             "letter": letter,
             "layer": metadata_df["layer"].iloc[0],
             "sae_width": metadata_df["sae_width"].iloc[0],
@@ -338,9 +334,6 @@ def build_f1_and_auroc_df(results_df, metadata_df):
             recall = metrics.recall_score(y, pred_sae > 0.0)
             precision = metrics.precision_score(y, pred_sae > 0.0)
             auc_info[f"auc_sparse_sae_{k}"] = auc_sae
-            best_f1_bias_sae, f1_sae_best = find_optimal_f1_threshold(y, pred_sae)
-            recall_sae_best = metrics.recall_score(y, pred_sae > best_f1_bias_sae)
-            precision_sae_best = metrics.precision_score(y, pred_sae > best_f1_bias_sae)
             sum_sae_pred = results_df[f"sum_sparse_sae_{letter}_k_{k}"].values
             auc_sum_sae = metrics.roc_auc_score(y, sum_sae_pred)
             f1_sum_sae = metrics.f1_score(y, sum_sae_pred > EPS)
@@ -349,11 +342,7 @@ def build_f1_and_auroc_df(results_df, metadata_df):
 
             auc_info[f"f1_sparse_sae_{k}"] = f1
             auc_info[f"recall_sparse_sae_{k}"] = recall
-            auc_info[f"recall_sparse_sae_{k}_best"] = recall_sae_best
             auc_info[f"precision_sparse_sae_{k}"] = precision
-            auc_info[f"precision_sparse_sae_{k}_best"] = precision_sae_best
-            auc_info[f"f1_sparse_sae_{k}_best"] = f1_sae_best
-            auc_info[f"bias_f1_sparse_sae_{k}_best"] = best_f1_bias_sae
             auc_info[f"auc_sum_sparse_sae_{k}"] = auc_sum_sae
             auc_info[f"f1_sum_sparse_sae_{k}"] = f1_sum_sae
             auc_info[f"recall_sum_sparse_sae_{k}"] = recall_sum_sae
@@ -549,6 +538,7 @@ def get_sparse_probing_auroc_f1_results_filename(sae_info: SaeInfo) -> str:
 def run_k_sparse_probing_experiments(
     layers: list[int],
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
+    probes_dir: Path | str = PROBES_DIR,
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = True,
@@ -594,7 +584,7 @@ def run_k_sparse_probing_experiments(
                 def get_raw_results_df():
                     return load_dfs_or_run(
                         lambda: load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
-                            sae_info, tokenizer, verbose=verbose
+                            sae_info, tokenizer, probes_dir, verbose=verbose
                         ),
                         (raw_results_path, metadata_results_path),
                         force=force,

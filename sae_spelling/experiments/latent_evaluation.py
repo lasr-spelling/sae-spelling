@@ -2,7 +2,6 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Literal
 
-import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
@@ -15,6 +14,7 @@ from tueplots import axes, bundles
 
 from sae_spelling.experiments.common import (
     EXPERIMENTS_DIR,
+    PROBES_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
     get_task_dir,
@@ -27,7 +27,7 @@ from sae_spelling.experiments.common import (
 from sae_spelling.probing import LinearProbe
 from sae_spelling.vocab import LETTERS
 
-AUROC_F1_EXPERIMENT_NAME = "encoder_auroc_and_f1"
+LATENT_EVALUATION_EXPERIMENT_NAME = "latent_evaluation"
 EPS = 1e-8
 
 
@@ -88,21 +88,7 @@ def eval_probe_and_top_sae_raw_scores(
     return pd.DataFrame(vocab_scores)
 
 
-def find_optimal_f1_threshold(y_true, y_scores):
-    # Calculate precision-recall curve
-    precisions, recalls, thresholds = metrics.precision_recall_curve(y_true, y_scores)
-
-    # Calculate F1 score for each threshold
-    f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-8)
-
-    # Find the threshold that gives the best F1 score
-    optimal_threshold_idx = np.argmax(f1_scores)
-    optimal_threshold = thresholds[optimal_threshold_idx]
-
-    return optimal_threshold, f1_scores[optimal_threshold_idx]
-
-
-def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
+def build_evaluation_df(results_df, sae_info: SaeInfo, topk: int = 5):
     aucs = []
     for letter in LETTERS:
         y = (results_df["answer_letter"] == letter).values
@@ -111,21 +97,12 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
         f1_probe = metrics.f1_score(y, pred_probe > 0)
         recall_probe = metrics.recall_score(y, pred_probe > 0)
         precision_probe = metrics.precision_score(y, pred_probe > 0)
-        best_f1_bias_probe, f1_probe_best = find_optimal_f1_threshold(y, pred_probe)
-        recall_probe_best = metrics.recall_score(y, pred_probe > best_f1_bias_probe)
-        precision_probe_best = metrics.precision_score(
-            y, pred_probe > best_f1_bias_probe
-        )
 
         auc_info = {
             "auc_probe": auc_probe,
             "f1_probe": f1_probe,
-            "f1_probe_best": f1_probe_best,
             "recall_probe": recall_probe,
             "precision_probe": precision_probe,
-            "recall_probe_best": recall_probe_best,
-            "precision_probe_best": precision_probe_best,
-            "bias_f1_probe_best": best_f1_bias_probe,
             "letter": letter,
             "sae_l0": sae_info.l0,
             "sae_width": sae_info.width,
@@ -138,16 +115,9 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
             recall = metrics.recall_score(y, pred_sae > EPS)
             precision = metrics.precision_score(y, pred_sae > EPS)
             auc_info[f"auc_sae_top_{topk_i}"] = auc_sae
-            best_f1_bias_sae, f1_best = find_optimal_f1_threshold(y, pred_sae)
-            recall_best = metrics.recall_score(y, pred_sae > best_f1_bias_sae)
-            precision_best = metrics.precision_score(y, pred_sae > best_f1_bias_sae)
             auc_info[f"f1_sae_top_{topk_i}"] = f1
             auc_info[f"recall_sae_top_{topk_i}"] = recall
             auc_info[f"precision_sae_top_{topk_i}"] = precision
-            auc_info[f"f1_sae_top_{topk_i}_best"] = f1_best
-            auc_info[f"recall_sae_top_{topk_i}_best"] = recall_best
-            auc_info[f"precision_sae_top_{topk_i}_best"] = precision_best
-            auc_info[f"bias_f1_sae_top_{topk_i}_best"] = best_f1_bias_sae
             auc_info[f"sae_top_{topk_i}_feat"] = results_df[
                 f"sae_{letter}_top_{topk_i}_feat"
             ].values[0]
@@ -165,15 +135,20 @@ def build_f1_and_auroc_df(results_df, sae_info: SaeInfo, topk: int = 5):
 def load_and_run_eval_probe_and_top_sae_raw_scores(
     sae_info: SaeInfo,
     tokenizer: PreTrainedTokenizerFast,
+    probes_dir: Path | str,
 ) -> pd.DataFrame:
     sae = load_gemmascope_sae(
         layer=sae_info.layer,
         l0=sae_info.l0,
         width=sae_info.width,
     )
-    probe = load_probe(task="first_letter", layer=sae_info.layer)
+    probe = load_probe(task="first_letter", layer=sae_info.layer, probes_dir=probes_dir)
     eval_activations, eval_data = load_probe_data_split(
-        tokenizer, task="first_letter", layer=sae_info.layer, device="cpu"
+        tokenizer,
+        task="first_letter",
+        layer=sae_info.layer,
+        device="cpu",
+        probes_dir=probes_dir,
     )
     df = eval_probe_and_top_sae_raw_scores(
         sae,
@@ -205,7 +180,7 @@ def _consolidate_results_df(
 def plot_metric_vs_l0(
     results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
     metric: Literal["f1", "precision", "recall"] = "f1",
-    experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
+    experiment_dir: Path | str = EXPERIMENTS_DIR / LATENT_EVALUATION_EXPERIMENT_NAME,
     task: str = "first_letter",
     layers_range: tuple[int, int] | None = None,
 ):
@@ -246,7 +221,7 @@ def plot_metric_vs_l0(
 def plot_metric_vs_layer(
     results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
     metric: Literal["f1", "precision", "recall"] = "f1",
-    experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
+    experiment_dir: Path | str = EXPERIMENTS_DIR / LATENT_EVALUATION_EXPERIMENT_NAME,
     task: str = "first_letter",
 ):
     task_output_dir = get_task_dir(experiment_dir, task=task)
@@ -309,9 +284,10 @@ def plot_metric_vs_layer(
         plt.show()
 
 
-def run_encoder_auroc_and_f1_experiments(
+def run_latent_evaluation_experiments(
     layers: list[int],
-    experiment_dir: Path | str = EXPERIMENTS_DIR / AUROC_F1_EXPERIMENT_NAME,
+    experiment_dir: Path | str = EXPERIMENTS_DIR / LATENT_EVALUATION_EXPERIMENT_NAME,
+    probes_dir: Path | str = PROBES_DIR,
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = True,
@@ -351,14 +327,14 @@ def run_encoder_auroc_and_f1_experiments(
                 def get_raw_results_df():
                     return load_df_or_run(
                         lambda: load_and_run_eval_probe_and_top_sae_raw_scores(
-                            sae_info, tokenizer
+                            sae_info, tokenizer, probes_dir
                         ),
                         raw_results_path,
                         force=force,
                     )
 
                 auroc_results_df = load_df_or_run(
-                    lambda: build_f1_and_auroc_df(get_raw_results_df(), sae_info),
+                    lambda: build_evaluation_df(get_raw_results_df(), sae_info),
                     auroc_results_path,
                     force=force,
                 )
