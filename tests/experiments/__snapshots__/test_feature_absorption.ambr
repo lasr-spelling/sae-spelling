@@ -5,7 +5,7 @@
     'token',
     'prompt',
     'sample_portion',
-    'num_true_positives',
+    'num_probe_true_positives',
     'split_feats',
     'split_feat_acts',
     'split_feat_probe_cos',
