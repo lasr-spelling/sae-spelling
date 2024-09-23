@@ -21,16 +21,9 @@ from sae_spelling.probing import LinearProbe
 DEFAULT_DTYPE = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-TEAM_DIR = Path("/content/drive/MyDrive/Team_Joseph")
-EXPERIMENTS_DIR = TEAM_DIR / "experiments"
-PROBES_DIR = (
-    TEAM_DIR
-    / "data"
-    / "probing_data"
-    / "gemma-2"
-    / "verbose_prompts"
-    / "no_contamination"
-)
+EXPERIMENTS_DIR = Path.cwd() / "experiments"
+# TODO: add probe training code
+PROBES_DIR = Path.cwd() / "probes"
 
 
 def dtype_to_str(dtype: torch.dtype | str) -> str:
@@ -230,11 +223,7 @@ def humanify_sae_width(width: int) -> str:
     """
     A helper to convert SAE width to a nicer human-readable string.
     """
-    if width == 16_000:
-        return "16k"
-    elif width == 65_000:
-        return "65k"
-    elif width == 1_000_000:
+    if width == 1_000_000:
         return "1m"
     else:
-        raise ValueError(f"Unknown width: {width}")
+        return f"{width // 1_000}k"

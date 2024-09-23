@@ -1,3 +1,7 @@
+import sys
+
+import pytest
+
 from sae_spelling.baseline import (
     BaselineResult,
     generate_and_score_samples,
@@ -15,6 +19,7 @@ def test_get_valid_vocab(gpt2_tokenizer):
         assert all(len(word) == int(key) for word in value)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Baseline crashes on macOS")
 def test_generate_and_score_samples(gpt2_hf_model):
     model, tokenizer = gpt2_hf_model
     model = model.to(

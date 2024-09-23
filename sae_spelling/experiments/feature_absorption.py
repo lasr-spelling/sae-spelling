@@ -13,6 +13,7 @@ from tueplots import axes, bundles
 
 from sae_spelling.experiments.common import (
     EXPERIMENTS_DIR,
+    PROBES_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
     get_task_dir,
@@ -178,10 +179,11 @@ def load_and_run_calculate_ig_ablation_and_cos_sims(
     calculator: FeatureAbsorptionCalculator,
     auroc_f1_df: pd.DataFrame,
     sae_info: SaeInfo,
+    probes_dir: Path | str,
     sparse_probing_task_output_dir: Path,
 ) -> pd.DataFrame:
     layer = sae_info.layer
-    probe = load_probe(layer=layer)
+    probe = load_probe(layer=layer, probes_dir=probes_dir)
     sae = load_gemmascope_sae(layer, width=sae_info.width, l0=sae_info.l0)
     likely_negs = get_stats_and_likely_false_negative_tokens(
         auroc_f1_df,
@@ -306,6 +308,7 @@ def run_feature_absortion_experiments(
     experiment_dir: Path | str = EXPERIMENTS_DIR / FEATURE_ABSORPTION_EXPERIMENT_NAME,
     sparse_probing_experiment_dir: Path | str = EXPERIMENTS_DIR
     / SPARSE_PROBING_EXPERIMENT_NAME,
+    probes_dir: Path | str = PROBES_DIR,
     task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = True,
@@ -371,7 +374,8 @@ def run_feature_absortion_experiments(
                         calculator,
                         auroc_f1_df,
                         sae_info,
-                        sparse_probing_task_output_dir,
+                        probes_dir=probes_dir,
+                        sparse_probing_task_output_dir=sparse_probing_task_output_dir,
                     ),
                     df_path,
                     force=force,
