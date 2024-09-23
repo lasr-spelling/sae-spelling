@@ -14,10 +14,10 @@ poetry install
 
 This project is set up so that code which could be reused in other projects is in the main `sae_spelling` package, and code specific to the experiments in the paper are in `sae_spelling.experiments`. In the future, we may move some of these utilities to their own library. The `sae_spelling` package is structured as follows:
 
-- `sae_spelling.feature_attribution`: Code for running SAE feature attribution experiments. Attribution tries to estimate. Main exports include:
+- `sae_spelling.feature_attribution`: Code for running SAE feature attribution experiments. Attribution tries to estimate the effect a latent has on the model output. Main exports include:
   - `calculate_feature_attribution()`
   - `calculate_integrated_gradient_attribution_patching()`
-- `sae_spelling.feature_ablation`: Code for running SAE feature ablation experiments. This involves ablating each firing SAE feature on a prompt to see how it affects a downstream metric (e.g. if the model knows the first letter of a token). The main function in this module is:
+- `sae_spelling.feature_ablation`: Code for running SAE feature ablation experiments. This involves ablating each firing SAE latent on a prompt to see how it affects a downstream metric (e.g. if the model knows the first letter of a token). The main function in this module is:
   - `calculate_individual_feature_ablations()`
 - `sae_spelling.probing`: Code for training logistic-regression probes in Torch. Some helpful exports from this module are:
   - `train_multi_probe()`: train a multi-class binary probe
