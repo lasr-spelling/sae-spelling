@@ -28,8 +28,10 @@ def test_calculate_ig_ablation_and_cos_sims_gives_sane_results(
     )
     # format: dict[letter: (num_true_positives, [split_feature_ids], [probable_feature_absorption_words])]
     likely_negs: dict[str, StatsAndLikelyFalseNegativeResults] = {
-        "a": StatsAndLikelyFalseNegativeResults(10, [1, 2, 3], [" Animal", " apple"]),
-        "b": StatsAndLikelyFalseNegativeResults(100, [12], [" banana", " bear"]),
+        "a": StatsAndLikelyFalseNegativeResults(
+            10, 10, [1, 2, 3], [" Animal", " apple"]
+        ),
+        "b": StatsAndLikelyFalseNegativeResults(100, 100, [12], [" banana", " bear"]),
     }
     df = calculate_ig_ablation_and_cos_sims(
         calculator, gpt2_l4_sae, fake_probe, likely_negs

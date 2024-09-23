@@ -1,4 +1,3 @@
-import pytest
 import torch
 from sae_lens import SAE
 from syrupy.assertion import SnapshotAssertion
@@ -27,10 +26,7 @@ def test_train_sparse_multi_probe_results_in_many_zero_weights():
     assert probe2_zero_weights > probe1_zero_weights
 
 
-@pytest.mark.parametrize("sae_post_act", [True, False])
-def test_train_k_sparse_probes_returns_reasonable_values(
-    gpt2_l4_sae: SAE, sae_post_act: bool
-):
+def test_train_k_sparse_probes_returns_reasonable_values(gpt2_l4_sae: SAE):
     train_labels = [("aaa", 0), ("bbb", 1), ("ccc", 2)]
     train_activations = torch.randn(3, 768)
     probes = train_k_sparse_probes(
@@ -38,7 +34,6 @@ def test_train_k_sparse_probes_returns_reasonable_values(
         train_labels,
         train_activations,
         ks=[1, 2, 3],
-        sae_post_act=sae_post_act,
     )
     assert probes.keys() == {1, 2, 3}
     for k, k_probes in probes.items():
@@ -53,6 +48,13 @@ def test_get_sae_acts(gpt2_l4_sae: SAE):
     token_act = torch.randn(768)
     sae_acts = _get_sae_acts(gpt2_l4_sae, token_act.unsqueeze(0), True).squeeze()
     assert sae_acts.shape == (24576,)
+
+
+def test_get_sae_acts_gives_same_results_batched_and_not_batched(gpt2_l4_sae: SAE):
+    token_acts = torch.randn(10, 768)
+    sae_acts_unbatched = _get_sae_acts(gpt2_l4_sae, token_acts, True, batch_size=1)
+    sae_acts_batched = _get_sae_acts(gpt2_l4_sae, token_acts, True, batch_size=5)
+    assert torch.allclose(sae_acts_unbatched, sae_acts_batched, atol=1e-3)
 
 
 def test_eval_probe_and_sae_k_sparse_raw_scores_gives_sane_results(
@@ -73,6 +75,5 @@ def test_eval_probe_and_sae_k_sparse_raw_scores_gives_sane_results(
         k_sparse_probes,
         eval_data,
         eval_activations,
-        metadata={"layer": 4},
     )
     assert df.columns.values.tolist() == snapshot

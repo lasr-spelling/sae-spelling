@@ -163,7 +163,6 @@ class FeatureAbsorptionCalculator:
         if not all(score.activation < EPS for score in main_feature_scores):
             return False
         # if the top ablation score is positive, this isn't absorption
-        # NOTE: should we change this? Should we only look at negative ablation scores to begin with?
         if top_ablation_feature_scores[0].ablation_score > 0:
             return False
         # If the top ablation score isn't significantly larger than the next largest score, this isn't absorption
@@ -214,7 +213,8 @@ class FeatureAbsorptionCalculator:
         for prompt in tqdm(prompts, disable=not show_progress):
             ig_scores, sae_acts = self._ig_ablate(sae, prompt, metric_fn=metric_fn)
             with torch.inference_mode():
-                top_ig_feats = ig_scores.abs().topk(self.topk_feats).indices.tolist()
+                # sort by negative ig score
+                top_ig_feats = (-1 * ig_scores).topk(self.topk_feats).indices.tolist()
                 main_feature_scores = _get_feature_scores(
                     main_feature_ids,
                     probe_cos_sims=cos_sims,

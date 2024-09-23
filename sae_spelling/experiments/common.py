@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Callable, Literal
+from typing import Callable, Iterable, Literal
 
 import numpy as np
 import pandas as pd
@@ -23,7 +23,14 @@ DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 TEAM_DIR = Path("/content/drive/MyDrive/Team_Joseph")
 EXPERIMENTS_DIR = TEAM_DIR / "experiments"
-PROBES_DIR = TEAM_DIR / "data" / "probing_data" / "gemma-2" / "verbose_prompts"
+PROBES_DIR = (
+    TEAM_DIR
+    / "data"
+    / "probing_data"
+    / "gemma-2"
+    / "verbose_prompts"
+    / "no_contamination"
+)
 
 
 def dtype_to_str(dtype: torch.dtype | str) -> str:
@@ -87,7 +94,7 @@ def load_probe_data_split(
     tokenizer: PreTrainedTokenizerFast,
     task: str = "first_letter",
     layer: int = 0,
-    split: Literal["train", "val"] = "val",
+    split: Literal["train", "test"] = "test",
     probes_dir: str | Path = PROBES_DIR,
     dtype: torch.dtype = DEFAULT_DTYPE,
     device: str = DEFAULT_DEVICE,
@@ -96,30 +103,25 @@ def load_probe_data_split(
         Path(probes_dir) / task / f"layer_{layer}" / f"{task}_data.npz",
     )
     df = pd.read_csv(
-        Path(probes_dir) / task / f"layer_{layer}" / f"{task}_df.csv",
+        Path(probes_dir) / task / f"layer_{layer}" / f"{task}_{split}_df.csv",
         keep_default_na=False,
         na_values=[""],
     )
     activations = torch.from_numpy(np_data[f"X_{split}"]).to(device, dtype=dtype)
     labels = np_data[f"y_{split}"].tolist()
-    indices: list[int] = np_data[f"{split}_idx"].tolist()
-    return _parse_probe_data_split(
-        tokenizer, activations, split_labels=labels, split_indices=indices, df=df
-    )
+    return _parse_probe_data_split(tokenizer, activations, split_labels=labels, df=df)
 
 
 def _parse_probe_data_split(
     tokenizer: PreTrainedTokenizerFast,
     split_activations: torch.Tensor,
     split_labels: list[int],
-    split_indices: list[int],
     df: pd.DataFrame,
 ) -> tuple[torch.Tensor, list[tuple[str, int]]]:
     valid_act_indices = []
     vocab_with_labels = []
     raw_tokens_with_labels = [
-        (df.iloc[idx]["token"], label)
-        for idx, label in zip(split_indices, split_labels)
+        (df.iloc[idx]["token"], label) for idx, label in enumerate(split_labels)
     ]
     for idx, (token, label) in enumerate(raw_tokens_with_labels):
         # sometimes we have tokens that look like <0x6A>
@@ -162,6 +164,9 @@ def get_gemmascope_saes_info(layer: int | None = None) -> list[SaeInfo]:
         layer_match = re.search(r"layer_(\d+)", sae_name)
         assert layer_match is not None
         sae_layer = int(layer_match.group(1))
+        # this SAE is missing, see https://github.com/jbloomAus/SAELens/pull/293. Just skip it.
+        if layer == 11 and l0 == 79:
+            continue
         if layer is None or sae_layer == layer:
             saes.append(SaeInfo(l0, sae_layer, width, sae_path))
     return saes
@@ -203,13 +208,22 @@ def load_df_or_run(
     path: Path,
     force: bool = False,
 ) -> pd.DataFrame:
-    if force or not path.exists():
-        df = fn()
-        df.to_parquet(path, index=False)
+    return load_dfs_or_run(lambda: [fn()], [path], force)[0]
+
+
+def load_dfs_or_run(
+    fn: Callable[[], Iterable[pd.DataFrame]],
+    paths: Iterable[Path],
+    force: bool = False,
+) -> list[pd.DataFrame]:
+    if force or not all(path.exists() for path in paths):
+        dfs = fn()
+        for df, path in zip(dfs, paths):
+            df.to_parquet(path, index=False)
     else:
-        print(f"{path} exists, loading from disk")
-        df = pd.read_parquet(path)
-    return df
+        print(f"{paths} exist(s), loading from disk")
+        dfs = [pd.read_parquet(path) for path in paths]
+    return list(dfs)
 
 
 def humanify_sae_width(width: int) -> str:
