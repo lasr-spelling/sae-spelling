@@ -1,6 +1,6 @@
 # SAE Spelling
 
-Code for the paper [A is for Absorption: Studying Feature Splitting and Absorption in Sparse Autoencoders](https://linktr.ee/lasr_2024).
+Code for the paper [A is for Absorption: Studying Feature Splitting and Absorption in Sparse Autoencoders](https://arxiv.org/abs/2409.14507).
 
 ## Installation
 
@@ -76,3 +76,19 @@ Below are some helpful tips for working with Poetry:
 - Update the lockfile: `poetry lock`
 - Run a command using the virtual environment: `poetry run <command>`
 - Run a Python file from the CLI as a script (module-style): `poetry run python -m sae_spelling.path.to.file`
+
+## Citation
+
+Please cite this work as follows:
+
+```
+@misc{chanin2024absorption,
+      title={A is for Absorption: Studying Feature Splitting and Absorption in Sparse Autoencoders},
+      author={David Chanin and James Wilken-Smith and Tomáš Dulka and Hardik Bhatnagar and Joseph Bloom},
+      year={2024},
+      eprint={2409.14507},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2409.14507},
+}
+```
