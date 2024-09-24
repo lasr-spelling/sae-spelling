@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Chanin"
+    given-names: "David"
+  - family-names: "Wilken-Smith"
+    given-names: "James"
+  - family-names: "Dulka"
+    given-names: "Tomáš"
+  - family-names: "Bhatnagar"
+    given-names: "Hardik"
+  - family-names: "Bloom"
+    given-names: "Joseph"
+doi: https://doi.org/10.48550/arXiv.2409.14507
+title: "A is for Absorption: Studying Feature Splitting and Absorption in Sparse Autoencoders"
+date-released: 2024-09-22
+url: "https://arxiv.org/abs/2409.14507"
