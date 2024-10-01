@@ -16,7 +16,7 @@ from sae_spelling.experiments.common import (
     PROBES_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
-    get_task_dir,
+    get_or_make_dir,
     humanify_sae_width,
     load_df_or_run,
     load_experiment_df,
@@ -231,9 +231,8 @@ def _aggregate_results_df(
 def plot_absorption_rate_vs_l0(
     results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
     experiment_dir: Path | str = EXPERIMENTS_DIR / FEATURE_ABSORPTION_EXPERIMENT_NAME,
-    task: str = "first_letter",
 ):
-    task_output_dir = get_task_dir(experiment_dir, task=task)
+    task_output_dir = get_or_make_dir(experiment_dir)
     df = _aggregate_results_df(results)
 
     sns.set_theme()
@@ -263,9 +262,8 @@ def plot_absorption_rate_vs_l0(
 def plot_absorption_rate_vs_layer(
     results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
     experiment_dir: Path | str = EXPERIMENTS_DIR / FEATURE_ABSORPTION_EXPERIMENT_NAME,
-    task: str = "first_letter",
 ):
-    task_output_dir = get_task_dir(experiment_dir, task=task)
+    task_output_dir = get_or_make_dir(experiment_dir)
     df = _aggregate_results_df(results)
     grouped_df = (
         df[["layer", "sae_l0", "sae_width_str", "absorption_rate"]]
@@ -309,7 +307,6 @@ def run_feature_absortion_experiments(
     sparse_probing_experiment_dir: Path | str = EXPERIMENTS_DIR
     / SPARSE_PROBING_EXPERIMENT_NAME,
     probes_dir: Path | str = PROBES_DIR,
-    task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = True,
     skip_32k_saes: bool = True,
@@ -321,10 +318,8 @@ def run_feature_absortion_experiments(
     """
     NOTE: this experiments requires the results of the k-sparse probing experiments. Make sure to run them first.
     """
-    task_output_dir = get_task_dir(experiment_dir, task=task)
-    sparse_probing_task_output_dir = get_task_dir(
-        sparse_probing_experiment_dir, task=task
-    )
+    task_output_dir = get_or_make_dir(experiment_dir)
+    sparse_probing_task_output_dir = get_or_make_dir(sparse_probing_experiment_dir)
 
     model = load_gemma2_model()
     vocab = get_alpha_tokens(model.tokenizer)  # type: ignore

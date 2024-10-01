@@ -1,13 +1,14 @@
 import os
+import random
 from dataclasses import dataclass
 from math import exp, log
+from pathlib import Path
 from typing import Callable, Literal
 
 import numpy as np
 import pandas as pd
 import torch
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-from sklearn.model_selection import train_test_split
 from torch import nn, optim
 from torch.nn.functional import one_hot
 from torch.utils.data import DataLoader, TensorDataset
@@ -230,61 +231,77 @@ def create_dataset_probe_training(
     vocab: list[str],
     formatter: Formatter,
     num_prompts_per_token: int,
+    base_template: str,
     max_icl_examples: int = 10,
+    train_test_fraction: float = 0.8,
     answer_class_fn: Callable[[str], int] = lambda answer: LETTERS.index(
         answer.strip().lower()
     ),
-) -> list[tuple[SpellingPrompt, int]]:
+) -> tuple[list[tuple[SpellingPrompt, int]], list[tuple[SpellingPrompt, int]]]:
     """
-    Create a dataset for probe training by generating prompts for each token in the given vocabulary.
+    Create train and test datasets for probe training by generating prompts for each token in the given vocabulary.
 
     Args:
         vocab: List of tokens in the vocabulary.
         formatter: Formatter function for answers.
         num_prompts_per_token: Number of prompts to generate for each token.
+        base_template: Template string for the base prompt.
         max_icl_examples: Maximum number of in-context learning examples to include.
+        train_test_fraction: Fraction of vocabulary to use for training (default: 0.8).
         answer_class_fn: Function to determine the answer class from the answer string.
                          Default is to index into LETTERS for single-character answers.
 
     Returns:
-        A list of tuples, each containing a SpellingPrompt object and the class of the answer (typically an integer 0-26).
+        A tuple containing two lists of (SpellingPrompt, int) tuples for train and test sets respectively.
     """
-    prompts = []
+    shuffled_vocab = random.sample(vocab, len(vocab))
 
-    for token in tqdm(vocab, total=len(vocab), desc="Processing tokens"):
-        for _ in range(num_prompts_per_token):
-            prompt = create_icl_prompt(
-                word=token,
-                examples=vocab,
-                answer_formatter=formatter,
-                max_icl_examples=max_icl_examples,
-            )
-            answer_class = answer_class_fn(prompt.answer)
+    # Split into train and test vocabularies
+    split_index = int(len(shuffled_vocab) * train_test_fraction)
+    train_vocab = shuffled_vocab[:split_index]
+    test_vocab = shuffled_vocab[split_index:]
 
-            prompts.append(
-                # {"prompt": prompt_text, "answer": answer, "answer_class": answer_class}
-                (prompt, answer_class)
-            )
+    train_prompts, test_prompts = [], []
 
-    return prompts
+    def generate_prompts(token_list, examples, prompts_list):
+        for token in tqdm(
+            token_list,
+            desc=f"Processing {'train' if prompts_list is train_prompts else 'test'} tokens",
+        ):
+            for _ in range(num_prompts_per_token):
+                prompt = create_icl_prompt(
+                    word=token,
+                    examples=examples,
+                    answer_formatter=formatter,
+                    base_template=base_template,
+                    max_icl_examples=max_icl_examples,
+                )
+                answer_class = answer_class_fn(prompt.answer)
+                prompts_list.append((prompt, answer_class))
+
+    generate_prompts(train_vocab, train_vocab, train_prompts)
+    generate_prompts(test_vocab, test_vocab, test_prompts)
+
+    return train_prompts, test_prompts
 
 
 def gen_and_save_df_acts_probing(
     model: HookedTransformer,
-    dataset: list[tuple[SpellingPrompt, int]],
-    path: str,
+    train_dataset: list[tuple[SpellingPrompt, int]],
+    test_dataset: list[tuple[SpellingPrompt, int]],
+    path: str | Path,
     hook_point: str,
-    task_name: str,
     layer: int,
     batch_size: int = 64,
     position_idx: int = -2,
-) -> tuple[pd.DataFrame, np.memmap] | tuple[None, None]:
+) -> tuple[pd.DataFrame, pd.DataFrame, np.memmap, np.memmap]:
     """
     Generate and save activations for probing tasks to the specified path
 
     Args:
         model: The model to use for generating activations.
-        dataset: List of tuples containing SpellingPrompt objects and answer classes.
+        train_dataset: List of tuples containing SpellingPrompt objects and answer classes for training.
+        test_dataset: List of tuples containing SpellingPrompt objects and answer classes for testing.
         path: Base path for saving outputs.
         hook_point: The model hook point to extract activations from.
         task_name: Name of the task for file naming.
@@ -292,158 +309,81 @@ def gen_and_save_df_acts_probing(
         position_idx: Index of the token position to extract activations from. Default is -2.
 
     Returns:
-        A tuple containing the task DataFrame and memory-mapped activation tensor.
-
-    Note:
-        This function assumes all prompts in the dataset have equal token length.
-        Using a fixed position_idx will only give correct results if this assumption holds.
+        A tuple containing the train and test task DataFrames and memory-mapped activation tensors.
     """
     d_model = model.cfg.d_model
 
-    # Pre-allocate the DataFrame for speed
-    task_df = pd.DataFrame(
-        {
-            "prompt": [prompt.base for prompt, _ in dataset],
-            "HOOK_POINT": [hook_point] * len(dataset),
-            "answer": [prompt.answer for prompt, _ in dataset],
-            "answer_class": [answer_class for _, answer_class in dataset],
-            "token": [prompt.word for prompt, _ in dataset],
-        }
-    )
-    task_df.index.name = "index"
+    def process_dataset(dataset, prefix):
+        df = pd.DataFrame(
+            {
+                "prompt": [prompt.base for prompt, _ in dataset],
+                "HOOK_POINT": [hook_point] * len(dataset),
+                "answer": [prompt.answer for prompt, _ in dataset],
+                "answer_class": [answer_class for _, answer_class in dataset],
+                "token": [prompt.word for prompt, _ in dataset],
+            }
+        )
+        df.index.name = "index"
 
-    # Create the directory if it doesn't exist
+        memmap_path = os.path.join(task_dir, f"{prefix}_act_tensor.dat")
+        act_tensor_memmap = np.memmap(
+            memmap_path, dtype="float32", mode="w+", shape=(len(dataset), d_model)
+        )
+
+        with torch.no_grad():
+            for i, batch in enumerate(
+                batchify(dataset, batch_size, show_progress=True)
+            ):
+                batch_prompts = [prompt.base for prompt, _ in batch]
+                _, cache = model.run_with_cache(batch_prompts)
+                acts = (
+                    cache[hook_point][:, position_idx, :]
+                    .to(torch.float32)
+                    .cpu()
+                    .numpy()
+                )
+                start_idx = i * batch_size
+                end_idx = start_idx + len(batch)
+                act_tensor_memmap[start_idx:end_idx] = acts
+
+        act_tensor_memmap.flush()
+        df_path = os.path.join(task_dir, f"{prefix}_df.csv")
+        df.to_csv(df_path, index=True)
+
+        return df, act_tensor_memmap
+
     layer_path = f"layer_{layer}"
-    task_dir = os.path.join(path, task_name, layer_path)
+    task_dir = os.path.join(path, layer_path)
     os.makedirs(task_dir, exist_ok=True)
 
-    memmap_path = os.path.join(task_dir, f"{task_name}_act_tensor.dat")
+    train_df, train_act_tensor = process_dataset(train_dataset, "train")
+    test_df, test_act_tensor = process_dataset(test_dataset, "test")
 
-    # Create a memmap file for act_tensor
-    act_tensor_memmap = np.memmap(
-        memmap_path, dtype="float32", mode="w+", shape=(len(dataset), d_model)
-    )
-
-    with torch.no_grad():
-        for i, batch in enumerate(batchify(dataset, batch_size, show_progress=True)):
-            batch_prompts = [prompt.base for prompt, _ in batch]
-            _, cache = model.run_with_cache(batch_prompts)
-
-            # Numpy doesn't support bfloat16, have to manually convert to fp32
-            acts = cache[hook_point][:, position_idx, :].to(torch.float32).cpu().numpy()
-
-            start_idx = i * batch_size
-            end_idx = start_idx + len(batch)
-            act_tensor_memmap[start_idx:end_idx] = acts
-
-    # Flush the memmap to ensure all data is written to disk
-    act_tensor_memmap.flush()
-
-    # Save the df to disk
-    df_path = os.path.join(task_dir, f"{task_name}_df.csv")
-    task_df.to_csv(df_path, index=True)
-
-    return task_df, act_tensor_memmap
-
-
-def load_df_acts_probing(
-    model: HookedTransformer, path: str, task: str, layer: int
-) -> tuple[pd.DataFrame, np.memmap]:
-    """
-    Load the DataFrame and activation tensor for a specific probing task.
-
-    Args:
-        model: The model used for generating activations (needed for d_model).
-        path: Base path where the data is stored.
-        task: Name of the task for file naming.
-
-    Returns:
-        A tuple containing the task DataFrame and memory-mapped activation tensor.
-
-    Raises:
-        FileNotFoundError: If the CSV or memory-mapped file is not found.
-        ValueError: If there's a mismatch between DataFrame and activation tensor sizes.
-    """
-    d_model = model.cfg.d_model
-    layer_path = f"layer_{layer}"
-
-    df_path = os.path.join(path, task, layer_path, f"{task}_df.csv")
-    act_path = os.path.join(path, task, layer_path, f"{task}_act_tensor.dat")
-
-    try:
-        task_df = pd.read_csv(df_path, index_col="index")
-    except FileNotFoundError:
-        raise FileNotFoundError(f"DataFrame file not found at {df_path}")
-
-    try:
-        task_acts = np.memmap(
-            act_path, shape=(len(task_df), d_model), mode="r", dtype="float32"
-        )
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Activation tensor file not found at {act_path}")
-
-    # Verify that DataFrame and activation tensor sizes match
-    if len(task_df) != task_acts.shape[0]:
-        raise ValueError(
-            f"Mismatch between DataFrame length ({len(task_df)}) and activation tensor first dimension ({task_acts.shape[0]})"
-        )
-
-    return task_df, task_acts
+    return train_df, test_df, train_act_tensor, test_act_tensor
 
 
 def train_linear_probe_for_task(
-    task_df: pd.DataFrame,
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
     device: torch.device,
-    task_activations: np.memmap,
+    train_activations: np.memmap,
+    test_activations: np.memmap,
     num_classes: int = 26,
     batch_size: int = 4096,
     num_epochs: int = 50,
     lr: float = 1e-2,
-    test_size: float = 0.2,
-    random_state: int = 42,
     weight_decay=1e-4,
-    use_stratify=True,
-) -> tuple[LinearProbe, dict[str, torch.Tensor | list[int]]]:
+) -> tuple[LinearProbe, dict[str, torch.Tensor]]:
     """
-    Train a linear probe for a specific task using the provided DataFrame and activation tensor.
-    Args:
-        task_df: DataFrame containing task data.
-        task_activations: Numpy memmap of activation tensors.
-        num_classes: Number of classes for the probe (default: 26).
-        batch_size: Batch size for training (default: 4096).
-        num_epochs: Number of training epochs (default: 50).
-        lr: Learning rate (default: 1e-2).
-        test_size: Proportion of the dataset to include in the validation split (default: 0.2).
-        random_state: Random state for reproducibility (default: 42).
-        device: Torch device to use for training (default: auto-detected).
-    Returns:
-        A tuple containing the trained LinearProbe and a dictionary of probe data.
+    Train a linear probe for a specific task using the provided train and test DataFrames and activation tensors.
     """
-    y = np.array(task_df["answer_class"].values)
-    original_indices = task_df.index.values  # Save the original indices
+    y_train = np.array(train_df["answer_class"].values)
+    y_test = np.array(test_df["answer_class"].values)
 
-    if use_stratify:
-        X_train, X_val, y_train, y_val, train_idx, val_idx = train_test_split(
-            task_activations,
-            y,
-            original_indices,
-            test_size=test_size,
-            stratify=y,
-            random_state=random_state,
-        )
-    else:
-        X_train, X_val, y_train, y_val, train_idx, val_idx = train_test_split(
-            task_activations,
-            y,
-            original_indices,
-            test_size=test_size,
-            random_state=random_state,
-        )
-
-    X_train_tensor = torch.from_numpy(X_train).float().to(device).requires_grad_(True)
+    X_train_tensor = torch.from_numpy(train_activations).float().to(device)
     y_train_tensor = torch.from_numpy(y_train).long().to(device)
-    X_val_tensor = torch.from_numpy(X_val).float().to(device)
-    y_val_tensor = torch.from_numpy(y_val).long().to(device)
+    X_test_tensor = torch.from_numpy(test_activations).float().to(device)
+    y_test_tensor = torch.from_numpy(y_test).long().to(device)
     y_train_one_hot = one_hot(y_train_tensor, num_classes=num_classes)
 
     probe = train_multi_probe(
@@ -461,25 +401,23 @@ def train_linear_probe_for_task(
 
     probe_data = {
         "X_train": X_train_tensor,
-        "X_val": X_val_tensor,
+        "X_test": X_test_tensor,
         "y_train": y_train_tensor,
-        "y_val": y_val_tensor,
-        "train_idx": train_idx,
-        "val_idx": val_idx,
+        "y_test": y_test_tensor,
     }
 
     return probe, probe_data
 
 
-def save_probe_and_data(probe, probe_data, probing_path, task, layer):
+def save_probe_and_data(probe, probe_data, probing_path, layer):
     layer_path = f"layer_{layer}"
-    task_dir = os.path.join(probing_path, task, layer_path)
+    task_dir = os.path.join(probing_path, layer_path)
     os.makedirs(task_dir, exist_ok=True)
 
-    probe_path = os.path.join(task_dir, f"{task}_probe.pth")
+    probe_path = os.path.join(task_dir, "probe.pth")
     torch.save(probe, probe_path)
 
-    data_path = os.path.join(task_dir, f"{task}_data.npz")
+    data_path = os.path.join(task_dir, "data.npz")
     np.savez(
         data_path,
         X_train=probe_data["X_train"].cpu().detach().numpy(),
@@ -489,27 +427,6 @@ def save_probe_and_data(probe, probe_data, probing_path, task, layer):
         train_idx=probe_data["train_idx"],
         val_idx=probe_data["val_idx"],
     )
-
-
-def load_probe_and_data(probing_path, task, layer, device=None):
-    layer_path = f"layer_{layer}"
-    task_dir = os.path.join(probing_path, task, layer_path)
-
-    probe_path = os.path.join(task_dir, f"{task}_probe.pth")
-    probe = torch.load(probe_path, map_location=device)
-
-    data_path = os.path.join(task_dir, f"{task}_data.npz")
-    loaded_data = np.load(data_path)
-    probe_data = {
-        "X_train": torch.from_numpy(loaded_data["X_train"]).to(device),
-        "X_val": torch.from_numpy(loaded_data["X_val"]).to(device),
-        "y_train": torch.from_numpy(loaded_data["y_train"]).to(device),
-        "y_val": torch.from_numpy(loaded_data["y_val"]).to(device),
-        "train_idx": loaded_data["train_idx"],
-        "val_idx": loaded_data["val_idx"],
-    }
-
-    return probe, probe_data
 
 
 @dataclass
