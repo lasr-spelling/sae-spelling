@@ -45,9 +45,6 @@ We include the following experiments from the paper in the `sae_spelling.experim
 
 These experiments each include a main "runner" function to run the experiment. These runners will only create data-frames and save them to disk, but won't generate plots. Experiments packages include helpers for generating the plots in the paper, but these plots require tex to be installed, so we don't generate plots by default.
 
-**NOTE**
-The experiments all require logistic-regression probes to be trained and data about the train/test split to be saved into dataframes in a specific format. We have not yet moved that code into this repo, but will do that in the next few days.
-
 ## Development
 
 This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and formatting, [Pyright](https://github.com/microsoft/pyright) for type checking, and [Pytest](https://docs.pytest.org/en/stable/) for testing.
