@@ -211,7 +211,9 @@ def get_gemmascope_saes_info(layer: int | None = None) -> list[SaeInfo]:
         if width_match.group(2) == "m":
             width *= 1000
         layer_match = re.search(r"layer_(\d+)", sae_name)
-        assert layer_match is not None
+        # new embedding SAEs don't have a layer; we don't care about them, so just skip
+        if layer_match is None:
+            continue
         sae_layer = int(layer_match.group(1))
         # this SAE is missing, see https://github.com/jbloomAus/SAELens/pull/293. Just skip it.
         if layer == 11 and l0 == 79:
