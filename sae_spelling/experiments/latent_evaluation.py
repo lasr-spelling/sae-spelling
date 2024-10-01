@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 from sae_lens import SAE
 from sklearn import metrics
 from tqdm.autonotebook import tqdm
-from transformers import AutoTokenizer, PreTrainedTokenizerFast
+from transformer_lens import HookedTransformer
 from tueplots import axes, bundles
 
 from sae_spelling.experiments.common import (
@@ -20,9 +20,10 @@ from sae_spelling.experiments.common import (
     get_or_make_dir,
     humanify_sae_width,
     load_df_or_run,
+    load_gemma2_model,
     load_gemmascope_sae,
-    load_probe,
-    load_probe_data_split,
+    load_or_train_probe,
+    load_probe_data_split_or_train,
 )
 from sae_spelling.probing import LinearProbe
 from sae_spelling.vocab import LETTERS
@@ -133,8 +134,8 @@ def build_evaluation_df(results_df, sae_info: SaeInfo, topk: int = 5):
 
 @torch.inference_mode()
 def load_and_run_eval_probe_and_top_sae_raw_scores(
+    model: HookedTransformer,
     sae_info: SaeInfo,
-    tokenizer: PreTrainedTokenizerFast,
     probes_dir: Path | str,
 ) -> pd.DataFrame:
     sae = load_gemmascope_sae(
@@ -142,9 +143,11 @@ def load_and_run_eval_probe_and_top_sae_raw_scores(
         l0=sae_info.l0,
         width=sae_info.width,
     )
-    probe = load_probe(layer=sae_info.layer, probes_dir=probes_dir)
-    eval_activations, eval_data = load_probe_data_split(
-        tokenizer,
+    probe = load_or_train_probe(
+        model=model, layer=sae_info.layer, probes_dir=probes_dir
+    )
+    eval_activations, eval_data = load_probe_data_split_or_train(
+        model=model,
         layer=sae_info.layer,
         device="cpu",
         probes_dir=probes_dir,
@@ -291,12 +294,9 @@ def run_latent_evaluation_experiments(
     skip_262k_saes: bool = True,
     skip_524k_saes: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
+    model = load_gemma2_model()
     task_output_dir = get_or_make_dir(experiment_dir)
-
     results_by_layer: dict[int, list[tuple[pd.DataFrame, SaeInfo]]] = defaultdict(list)
-    tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
-        "google/gemma-2-2b"
-    )  # type: ignore
     with tqdm(total=len(layers)) as pbar:
         for layer in layers:
             pbar.set_description(f"Layer {layer}")
@@ -323,7 +323,7 @@ def run_latent_evaluation_experiments(
                 def get_raw_results_df():
                     return load_df_or_run(
                         lambda: load_and_run_eval_probe_and_top_sae_raw_scores(
-                            sae_info, tokenizer, probes_dir
+                            model, sae_info, probes_dir
                         ),
                         raw_results_path,
                         force=force,
