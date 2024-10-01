@@ -335,11 +335,13 @@ def gen_and_save_df_acts_probing(
                 batchify(dataset, batch_size, show_progress=True)
             ):
                 batch_prompts = [prompt.base for prompt, _ in batch]
-                _, cache = model.run_with_cache(batch_prompts)
+                cache = model.run_with_cache(batch_prompts, names_filter=[hook_point])[
+                    1
+                ]
                 acts = (
                     cache[hook_point][:, position_idx, :]
-                    .to(torch.float32)
                     .cpu()
+                    .to(torch.float32)
                     .numpy()
                 )
                 start_idx = i * batch_size
