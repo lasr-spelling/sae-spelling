@@ -132,7 +132,6 @@ def build_evaluation_df(results_df, sae_info: SaeInfo, topk: int = 5):
     return pd.DataFrame(aucs)
 
 
-@torch.inference_mode()
 def load_and_run_eval_probe_and_top_sae_raw_scores(
     model: HookedTransformer,
     sae_info: SaeInfo,
@@ -146,23 +145,24 @@ def load_and_run_eval_probe_and_top_sae_raw_scores(
     probe = load_or_train_probe(
         model=model, layer=sae_info.layer, probes_dir=probes_dir
     )
-    eval_activations, eval_data = load_probe_data_split_or_train(
-        model=model,
-        layer=sae_info.layer,
-        device="cpu",
-        probes_dir=probes_dir,
-    )
-    df = eval_probe_and_top_sae_raw_scores(
-        sae,
-        probe,
-        eval_data,
-        eval_activations,
-        metadata={
-            "layer": sae_info.layer,
-            "sae_l0": sae_info.l0,
-            "sae_width": sae_info.width,
-        },
-    )
+    with torch.inference_mode():
+        eval_activations, eval_data = load_probe_data_split_or_train(
+            model=model,
+            layer=sae_info.layer,
+            device="cpu",
+            probes_dir=probes_dir,
+        )
+        df = eval_probe_and_top_sae_raw_scores(
+            sae,
+            probe,
+            eval_data,
+            eval_activations,
+            metadata={
+                "layer": sae_info.layer,
+                "sae_l0": sae_info.l0,
+                "sae_width": sae_info.width,
+            },
+        )
     return df
 
 
