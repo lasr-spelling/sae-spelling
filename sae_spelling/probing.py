@@ -423,11 +423,9 @@ def save_probe_and_data(probe, probe_data, probing_path, layer):
     np.savez(
         data_path,
         X_train=probe_data["X_train"].cpu().detach().numpy(),
-        X_val=probe_data["X_val"].cpu().detach().numpy(),
+        X_test=probe_data["X_test"].cpu().detach().numpy(),
         y_train=probe_data["y_train"].cpu().detach().numpy(),
-        y_val=probe_data["y_val"].cpu().detach().numpy(),
-        train_idx=probe_data["train_idx"],
-        val_idx=probe_data["val_idx"],
+        y_test=probe_data["y_test"].cpu().detach().numpy(),
     )
 
 
