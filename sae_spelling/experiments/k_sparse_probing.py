@@ -12,7 +12,7 @@ from sklearn import metrics
 from sklearn.linear_model import LogisticRegression
 from torch import nn
 from tqdm.autonotebook import tqdm
-from transformers import AutoTokenizer, PreTrainedTokenizerFast
+from transformer_lens import HookedTransformer
 from tueplots import axes, bundles
 
 from sae_spelling.experiments.common import (
@@ -20,13 +20,14 @@ from sae_spelling.experiments.common import (
     PROBES_DIR,
     SaeInfo,
     get_gemmascope_saes_info,
-    get_task_dir,
+    get_or_make_dir,
     humanify_sae_width,
     load_df_or_run,
     load_dfs_or_run,
+    load_gemma2_model,
     load_gemmascope_sae,
     load_probe,
-    load_probe_data_split,
+    load_probe_data_split_or_train,
 )
 from sae_spelling.probing import LinearProbe, train_multi_probe
 from sae_spelling.util import DEFAULT_DEVICE, batchify
@@ -246,7 +247,7 @@ def eval_probe_and_sae_k_sparse_raw_scores(
 
 def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
     sae_info: SaeInfo,
-    tokenizer: PreTrainedTokenizerFast,
+    model: HookedTransformer,
     probes_dir: Path | str,
     verbose: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -258,13 +259,10 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
         )
         if verbose:
             print("Loading probe and training data", flush=True)
-        probe = load_probe(
-            task="first_letter", layer=sae_info.layer, probes_dir=probes_dir
-        )
-        train_activations, train_data = load_probe_data_split(
-            tokenizer,
+        probe = load_probe(layer=sae_info.layer, probes_dir=probes_dir)
+        train_activations, train_data = load_probe_data_split_or_train(
+            model,
             probes_dir=probes_dir,
-            task="first_letter",
             layer=sae_info.layer,
             split="train",
             device="cpu",
@@ -279,10 +277,9 @@ def load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
     with torch.no_grad():
         if verbose:
             print("Loading validation data", flush=True)
-        eval_activations, eval_data = load_probe_data_split(
-            tokenizer,
+        eval_activations, eval_data = load_probe_data_split_or_train(
+            model,
             probes_dir=probes_dir,
-            task="first_letter",
             layer=sae_info.layer,
             split="test",
             device="cpu",
@@ -405,9 +402,8 @@ def _consolidate_results_df(
 def plot_feature_splits_vs_l0(
     k_sparse_results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
-    task: str = "first_letter",
 ):
-    task_output_dir = get_task_dir(experiment_dir, task=task)
+    task_output_dir = get_or_make_dir(experiment_dir)
     df = _consolidate_results_df(k_sparse_results)
     sns.set_theme()
     plt.rcParams.update({"figure.dpi": 150})
@@ -437,9 +433,8 @@ def plot_k1_metric_vs_l0(
     k_sparse_results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
     metric: Literal["f1", "precision", "recall"] = "f1",
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
-    task: str = "first_letter",
 ):
-    task_output_dir = get_task_dir(experiment_dir, task=task)
+    task_output_dir = get_or_make_dir(experiment_dir)
     df = _consolidate_results_df(k_sparse_results)
     sns.set_theme()
     plt.rcParams.update({"figure.dpi": 150})
@@ -469,9 +464,8 @@ def plot_k1_metric_vs_layer(
     k_sparse_results: dict[int, list[tuple[pd.DataFrame, SaeInfo]]],
     metric: Literal["f1", "precision", "recall"] = "f1",
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
-    task: str = "first_letter",
 ):
-    task_output_dir = get_task_dir(experiment_dir, task=task)
+    task_output_dir = get_or_make_dir(experiment_dir)
     df = _consolidate_results_df(k_sparse_results)
 
     grouped_df = (
@@ -539,7 +533,6 @@ def run_k_sparse_probing_experiments(
     layers: list[int],
     experiment_dir: Path | str = EXPERIMENTS_DIR / SPARSE_PROBING_EXPERIMENT_NAME,
     probes_dir: Path | str = PROBES_DIR,
-    task: str = "first_letter",
     force: bool = False,
     skip_1m_saes: bool = True,
     skip_32k_saes: bool = True,
@@ -548,12 +541,10 @@ def run_k_sparse_probing_experiments(
     f1_jump_threshold: float = 0.03,  # noqa: ARG001
     verbose: bool = True,
 ) -> dict[int, list[tuple[pd.DataFrame, SaeInfo]]]:
-    task_output_dir = get_task_dir(experiment_dir, task=task)
+    task_output_dir = get_or_make_dir(experiment_dir)
+    model = load_gemma2_model()
 
     results_by_layer: dict[int, list[tuple[pd.DataFrame, SaeInfo]]] = defaultdict(list)
-    tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
-        "google/gemma-2-2b"
-    )  # type: ignore
     with tqdm(total=len(layers)) as pbar:
         for layer in layers:
             pbar.set_description(f"Layer {layer}")
@@ -584,7 +575,7 @@ def run_k_sparse_probing_experiments(
                 def get_raw_results_df():
                     return load_dfs_or_run(
                         lambda: load_and_run_eval_probe_and_sae_k_sparse_raw_scores(
-                            sae_info, tokenizer, probes_dir, verbose=verbose
+                            sae_info, model, probes_dir, verbose=verbose
                         ),
                         (raw_results_path, metadata_results_path),
                         force=force,

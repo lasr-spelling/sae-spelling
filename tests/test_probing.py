@@ -1,6 +1,6 @@
 import os
 import tempfile
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -18,7 +18,6 @@ from sae_spelling.probing import (
     create_dataset_probe_training,
     gen_and_save_df_acts_probing,
     gen_probe_stats,
-    load_df_acts_probing,
     train_binary_probe,
     train_linear_probe_for_task,
     train_multi_probe,
@@ -276,20 +275,48 @@ def test_train_multi_probe_scores_highly_on_noisy_datasets(seed):
 
 
 def test_create_dataset_probe_training():
-    vocab = ["apple", "banana", "cherry"]
+    vocab = [
+        "apple",
+        "banana",
+        "cherry",
+        "date",
+        "elderberry",
+        "fig",
+        "grape",
+        "honeydew",
+        "kiwi",
+        "lemon",
+        "mango",
+        "nectarine",
+        "orange",
+        "papaya",
+        "quince",
+        "raspberry",
+        "strawberry",
+        "tangerine",
+    ]
     formatter = lambda x: x[0].upper()
     num_prompts_per_token = 2
     max_icl_examples = 2
 
-    result = create_dataset_probe_training(
-        vocab, formatter, num_prompts_per_token, max_icl_examples
+    train_dataset, test_dataset = create_dataset_probe_training(
+        vocab,
+        formatter,
+        num_prompts_per_token,
+        max_icl_examples=max_icl_examples,
+        base_template="{word}:",
+        train_test_fraction=0.5,
     )
 
-    assert len(result) == len(vocab) * num_prompts_per_token
-    for prompt, answer_class in result:
+    assert len(train_dataset) == len(vocab) * num_prompts_per_token / 2
+    assert len(test_dataset) == len(vocab) * num_prompts_per_token / 2
+    for prompt, answer_class in train_dataset:
         assert isinstance(prompt, SpellingPrompt)
         assert isinstance(answer_class, int)
-        assert prompt.answer in ["A", "B", "C"]
+        assert 0 <= answer_class <= 25
+    for prompt, answer_class in test_dataset:
+        assert isinstance(prompt, SpellingPrompt)
+        assert isinstance(answer_class, int)
         assert 0 <= answer_class <= 25
 
 
@@ -316,78 +343,65 @@ def test_gen_and_save_df_acts_probing(mock_to_csv, mock_model, tmp_path):
     }
     mock_model.run_with_cache.return_value = (None, mock_cache)
 
-    df, memmap = gen_and_save_df_acts_probing(
+    train_df, test_df, train_memmap, test_memmap = gen_and_save_df_acts_probing(
         mock_model,
-        dataset,
-        tmp_path,
-        "test_hook",
-        "test_task",
+        test_dataset=dataset,
+        train_dataset=dataset,
+        path=tmp_path,
+        hook_point="test_hook",
         layer=0,
         batch_size=2,
         position_idx=-2,
     )
 
-    assert isinstance(df, pd.DataFrame)
-    assert isinstance(memmap, np.memmap)
+    assert isinstance(train_df, pd.DataFrame)
+    assert isinstance(test_df, pd.DataFrame)
+    assert isinstance(train_memmap, np.memmap)
+    assert isinstance(test_memmap, np.memmap)
     assert mock_to_csv.called
 
     # Check if the memmap file was created
-    memmap_path = os.path.join(
-        tmp_path, "test_task", "layer_0", "test_task_act_tensor.dat"
-    )
-    assert os.path.exists(memmap_path)
-    assert memmap.shape == (2, 768)  # 2 samples, 768 dimensions
-
-
-@patch("sae_spelling.probing.pd.read_csv")
-def test_load_df_acts_probing(mock_read_csv, tmp_path):
-    mock_model = Mock()
-    mock_model.cfg.d_model = 768
-
-    mock_df = pd.DataFrame({"index": range(100)})
-    mock_read_csv.return_value = mock_df
-
-    task_dir = os.path.join(tmp_path, "test_task", "layer_0")
-    os.makedirs(task_dir, exist_ok=True)
-
-    memmap_path = os.path.join(task_dir, "test_task_act_tensor.dat")
-    memmap = np.memmap(memmap_path, dtype="float32", mode="w+", shape=(100, 768))
-    memmap[:] = np.random.rand(100, 768).astype(np.float32)
-    memmap.flush()
-
-    df, acts = load_df_acts_probing(mock_model, tmp_path, "test_task", layer=0)
-
-    assert isinstance(df, pd.DataFrame)
-    assert isinstance(acts, np.memmap)
-    assert df.shape[0] == acts.shape[0]
-    assert acts.shape == (100, 768)
+    test_memmap_path = os.path.join(tmp_path, "layer_0", "test_act_tensor.dat")
+    train_memmap_path = os.path.join(tmp_path, "layer_0", "train_act_tensor.dat")
+    assert os.path.exists(test_memmap_path)
+    assert os.path.exists(train_memmap_path)
+    assert train_memmap.shape == (2, 768)  # 2 samples, 768 dimensions
+    assert test_memmap.shape == (2, 768)  # 2 samples, 768 dimensions
 
 
 def test_train_linear_probe_for_task():
-    task_df = pd.DataFrame({"answer_class": np.random.randint(0, 26, 1000)})
+    train_df = pd.DataFrame({"answer_class": np.random.randint(0, 26, 1000)})
+    test_df = pd.DataFrame({"answer_class": np.random.randint(0, 26, 1000)})
     device = torch.device("cpu")
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp_filename = tmp.name
 
-    task_act_tensor = np.memmap(
-        tmp_filename, dtype="float32", mode="w+", shape=(1000, 768)
-    )
-    task_act_tensor[:] = np.random.rand(1000, 768).astype(np.float32)
-    task_act_tensor.flush()
+    train_acts = np.memmap(tmp_filename, dtype="float32", mode="w+", shape=(1000, 768))
+    train_acts[:] = np.random.rand(1000, 768).astype(np.float32)
+    train_acts.flush()
+
+    test_acts = np.memmap(tmp_filename, dtype="float32", mode="w+", shape=(1000, 768))
+    test_acts[:] = np.random.rand(1000, 768).astype(np.float32)
+    test_acts.flush()
 
     probe, probe_data = train_linear_probe_for_task(
-        task_df, device, task_act_tensor, num_classes=26, batch_size=32, num_epochs=2
+        train_df,
+        test_df,
+        device=device,
+        train_activations=train_acts,
+        test_activations=test_acts,
+        num_classes=26,
+        batch_size=32,
+        num_epochs=2,
     )
 
     assert isinstance(probe, LinearProbe)
     assert isinstance(probe_data, dict)
-    assert all(
-        key in probe_data
-        for key in ["X_train", "X_val", "y_train", "y_val", "train_idx", "val_idx"]
-    )
+    assert all(key in probe_data for key in ["X_train", "X_test", "y_train", "y_test"])
 
     # Clean up
-    del task_act_tensor
+    del train_acts
+    del test_acts
     os.unlink(tmp_filename)
 
 
