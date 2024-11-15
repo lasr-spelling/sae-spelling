@@ -107,7 +107,7 @@ def load_probe(
     device: str = DEFAULT_DEVICE,
 ) -> LinearProbe:
     probe = torch.load(
-        Path(probes_dir) / f"layer_{layer}" / "probe.pth",
+        Path(probes_dir) / f"layer_{layer}" / "first_letter_probe.pth",
         map_location=device,
     ).to(dtype=dtype)
     return probe
@@ -121,7 +121,7 @@ def load_probe_data_split_or_train(
     dtype: torch.dtype = DEFAULT_DTYPE,
     device: str = DEFAULT_DEVICE,
 ) -> tuple[torch.Tensor, list[tuple[str, int]]]:
-    probe_path = Path(probes_dir) / f"layer_{layer}" / "probe.pth"
+    probe_path = Path(probes_dir) / f"layer_{layer}" / "first_letter_probe.pth"
     if not probe_path.exists():
         print(f"Probe for layer {layer} not found, training...")
         train_and_save_probes(
@@ -149,10 +149,10 @@ def load_probe_data_split(
     device: str = DEFAULT_DEVICE,
 ) -> tuple[torch.Tensor, list[tuple[str, int]]]:
     np_data = np.load(
-        Path(probes_dir) / f"layer_{layer}" / "data.npz",
+        Path(probes_dir) / f"layer_{layer}" / "first_letter_data.npz",
     )
     df = pd.read_csv(
-        Path(probes_dir) / f"layer_{layer}" / f"{split}_df.csv",
+        Path(probes_dir) / f"layer_{layer}" / f"first_letter_{split}_df.csv",
         keep_default_na=False,
         na_values=[""],
     )
