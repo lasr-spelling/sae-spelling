@@ -56,7 +56,9 @@ class StatsAndLikelyFalseNegativeResults:
     potential_false_negatives: list[str]
 
 
-def letter_delta_metric(tokenizer: PreTrainedTokenizerBase, pos_letter: str):
+def letter_delta_metric(
+    tokenizer: PreTrainedTokenizerBase, pos_letter: str, max_agg: bool = False
+):
     neg_letters = [
         f" {letter}" for letter in LETTERS_UPPER if pos_letter[-1].upper() != letter
     ]
@@ -68,7 +70,10 @@ def letter_delta_metric(tokenizer: PreTrainedTokenizerBase, pos_letter: str):
     def metric_fn(logits):
         pos_logit = logits[:, -1, pos_letter_tok]
         neg_logits = logits[:, -1, neg_letter_toks]
-        result = pos_logit - (neg_logits.sum(dim=-1) / len(neg_letters))
+        if max_agg:
+            result = pos_logit - neg_logits.max(dim=-1).values
+        else:
+            result = pos_logit - (neg_logits.sum(dim=-1) / len(neg_letters))
         return result
 
     return metric_fn
@@ -88,7 +93,9 @@ def calculate_ig_ablation_and_cos_sims(
             sae,
             words=stats.potential_false_negatives,
             probe_dir=probe.weights[LETTERS.index(letter)],
-            metric_fn=letter_delta_metric(calculator.model.tokenizer, letter),
+            metric_fn=letter_delta_metric(
+                calculator.model.tokenizer, letter, max_agg=True
+            ),
             main_feature_ids=stats.split_feats,
             max_ablation_samples=max_prompts_per_letter,
             show_progress=False,
