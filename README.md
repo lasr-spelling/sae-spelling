@@ -45,6 +45,14 @@ We include the following experiments from the paper in the `sae_spelling.experim
 
 These experiments each include a main "runner" function to run the experiment. These runners will only create data-frames and save them to disk, but won't generate plots. Experiments packages include helpers for generating the plots in the paper, but these plots require tex to be installed, so we don't generate plots by default.
 
+## Toy Models of Feature Absorption
+
+The toy model experiments in the paper can be found in the following Colab notebook:
+
+<a target="_blank" href="https://colab.research.google.com/drive/1MMKKGxHk34Q823hBHbhYMW5ArvCqUhHw">
+  <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a>
+
 ## Development
 
 This project uses [Ruff](https://docs.astral.sh/ruff/) for linting and formatting, [Pyright](https://github.com/microsoft/pyright) for type checking, and [Pytest](https://docs.pytest.org/en/stable/) for testing.
