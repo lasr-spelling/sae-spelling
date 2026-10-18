@@ -106,9 +106,11 @@ def load_probe(
     dtype: torch.dtype = DEFAULT_DTYPE,
     device: str = DEFAULT_DEVICE,
 ) -> LinearProbe:
+    # probes are saved as full pickled LinearProbe modules (see save_probe_and_data)
     probe = torch.load(
         Path(probes_dir) / f"layer_{layer}" / "probe.pth",
         map_location=device,
+        weights_only=False,
     ).to(dtype=dtype)
     return probe
 

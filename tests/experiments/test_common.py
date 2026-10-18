@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pandas as pd
 import torch
 from syrupy.assertion import SnapshotAssertion
@@ -7,7 +9,9 @@ from sae_spelling.experiments.common import (
     SaeInfo,
     _parse_probe_data_split,
     get_gemmascope_saes_info,
+    load_probe,
 )
+from sae_spelling.probing import LinearProbe, save_probe_and_data
 
 
 def test_get_gemmascope_saes_info(snapshot: SnapshotAssertion):
@@ -99,3 +103,20 @@ def test_parse_probe_data_split_replaces_special_token_chars(
         (" sculpt", 18),
         ("whale", 22),
     ]
+
+
+def test_load_probe_round_trips_probe_saved_by_save_probe_and_data(tmp_path: Path):
+    probe = LinearProbe(input_dim=12, num_outputs=26)
+    probe_data = {
+        "X_train": torch.randn(4, 12),
+        "X_test": torch.randn(2, 12),
+        "y_train": torch.tensor([0, 1, 2, 3]),
+        "y_test": torch.tensor([4, 5]),
+    }
+    save_probe_and_data(probe, probe_data, tmp_path, layer=3)
+
+    loaded = load_probe(layer=3, probes_dir=tmp_path, dtype=torch.float32, device="cpu")
+
+    assert isinstance(loaded, LinearProbe)
+    assert torch.allclose(loaded.weights, probe.weights)
+    assert torch.allclose(loaded.biases, probe.biases)
